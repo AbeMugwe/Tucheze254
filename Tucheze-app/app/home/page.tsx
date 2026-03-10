@@ -4,6 +4,7 @@ import { useState, useEffect, ReactNode } from "react";
 import { useQuery } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { api } from "@/convex/_generated/api";
+import Navbar from "@/components/Navbar";
 
 
 
@@ -457,8 +458,10 @@ export default function Tucheze254Home() {
 
   // ── Auth (real Convex) ────────────────────────────────────────────────────
   const { signOut: _signOut } = useAuthActions();
-  const currentUser = useQuery(api.users.currentUser);
+  const _currentUser = useQuery(api.users.currentUser);
   // undefined = still loading, null = logged out, object = logged in
+  // Cast to our local interface so TypeScript treats profile fields as non-optional
+  const currentUser = _currentUser as ConvexUser | null | undefined;
 
   const signOut = async () => {
     await _signOut();
@@ -486,45 +489,7 @@ export default function Tucheze254Home() {
       <div className="page">
 
         {/* ── NAV ── */}
-        <nav>
-          <div className="logo">
-            <div className="logo-badge">🎲</div>
-            Tucheze254
-          </div>
-
-          <div className="nav-links">
-            <a className="nav-btn" href="#">Sessions</a>
-            <a className="nav-btn" href="#">Games</a>
-            <a className="nav-btn" href="#">Leaderboard</a>
-
-            {currentUser ? (
-              // ── LOGGED IN ──
-              <>
-                <button className="nav-btn primary">+ New Session</button>
-
-                {/* User avatar chip */}
-                <div className="nav-user-chip" title={currentUser.nickname}>
-                  <div className="nav-user-avatar" style={{ background: currentUser.color }}>
-                    {currentUser.avatar}
-                  </div>
-                  <span className="nav-user-name">{currentUser.nickname}</span>
-                </div>
-
-                {/* Log out */}
-                <button className="nav-btn logout" onClick={signOut}>
-                  👋 Log Out
-                </button>
-              </>
-            ) : (
-              // ── LOGGED OUT ──
-              <>
-                {/* TODO: replace href with router Link to="/signin" */}
-                <a className="nav-btn" href="/signin">Log In</a>
-                <a className="nav-btn primary" href="/signup">Sign Up →</a>
-              </>
-            )}
-          </div>
-        </nav>
+        <Navbar/>
 
         {/* ── HERO ── */}
         <div className="hero">
@@ -534,12 +499,12 @@ export default function Tucheze254Home() {
                 🔴 LIVE SESSION
               </span>
               <span style={{ background:"#C8F135", border:"2.5px solid #1a1a2e", borderRadius:50, padding:"4px 14px", fontSize:"0.75rem", fontWeight:800, boxShadow:"2px 2px 0 #1a1a2e" }}>
-                Friday Game Night
+                Game Night
               </span>
             </div>
 
             {currentUser ? (
-              <h1>Hey <span>{currentUser.avatar} {currentUser.nickname}</span>,<br />ready to play?</h1>
+              <h1>Hey <span>{currentUser.avatar ?? "🎲"} {currentUser.nickname ?? "Player"}</span>,<br />ready to play?</h1>
             ) : (
               <h1>Your crew.<br /><span>Your scores.</span><br />Your legends.</h1>
             )}
@@ -622,7 +587,7 @@ export default function Tucheze254Home() {
             {/* ── LEADERBOARD ── */}
             <div className="section-header">
               <div className="section-title">
-                🏆 Leaderboard <span className="section-pill">Season 4</span>
+                🏆 Leaderboard 
               </div>
               <button className="btn btn-navy" style={{ fontSize:"0.8rem", padding:"8px 16px" }}>View All →</button>
             </div>

@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, FormEvent, ChangeEvent } from "react";
+import { useRouter } from "next/navigation";
+import { useAuthActions } from "@convex-dev/auth/react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -77,9 +79,7 @@ const css = `
     color: #FF6B6B; text-shadow: 3px 3px 0 rgba(255,107,107,0.25);
   }
 
-  .si-left-content {
-    position: relative; z-index: 1;
-  }
+  .si-left-content { position: relative; z-index: 1; }
   .si-left-tag {
     display: inline-flex; align-items: center; gap: 6px;
     background: rgba(255,225,53,0.12); border: 2px solid rgba(255,225,53,0.4);
@@ -185,13 +185,19 @@ const css = `
   }
   .si-pw-toggle:hover { opacity: 0.9; }
 
-  .si-forgot {
-    text-align: right; margin-top: -10px; margin-bottom: 18px;
-  }
+  .si-forgot { text-align: right; margin-top: -10px; margin-bottom: 18px; }
   .si-forgot-link {
     font-size: 0.76rem; font-weight: 800; color: #FF6B6B;
     cursor: pointer; opacity: 0.8;
     text-decoration: underline; text-underline-offset: 2px;
+  }
+
+  /* auth error banner */
+  .si-auth-error {
+    background: #fff0f0; border: 2px solid #FF6B6B; border-radius: 12px;
+    padding: 10px 14px; margin-bottom: 14px;
+    font-size: 0.8rem; font-weight: 700; color: #FF6B6B;
+    display: flex; align-items: center; gap: 8px;
   }
 
   /* submit */
@@ -312,11 +318,15 @@ function Field({ label, icon, type = "text", value, placeholder, onChange, error
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function SignIn() {
-  const [form, setForm]       = useState<SignInForm>({ email: "", password: "" });
-  const [errors, setErrors]   = useState<FormError[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [success, setSuccess] = useState<boolean>(false);
-  const [showPw, setShowPw]   = useState<boolean>(false);
+  const router     = useRouter();
+  const { signIn } = useAuthActions();
+
+  const [form, setForm]           = useState<SignInForm>({ email: "", password: "" });
+  const [errors, setErrors]       = useState<FormError[]>([]);
+  const [loading, setLoading]     = useState<boolean>(false);
+  const [success, setSuccess]     = useState<boolean>(false);
+  const [showPw, setShowPw]       = useState<boolean>(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   const getError = (field: string): string | undefined =>
     errors.find((e) => e.field === field)?.message;
@@ -326,13 +336,33 @@ export default function SignIn() {
     const errs = validate(form);
     if (errs.length > 0) { setErrors(errs); return; }
     setErrors([]);
+    setAuthError(null);
     setLoading(true);
-    // TODO: wire to Convex Auth
-    // const { signIn } = useAuthActions();
-    // await signIn("password", { email: form.email, password: form.password });
-    await new Promise((r) => setTimeout(r, 1400));
-    setLoading(false);
-    setSuccess(true);
+
+    try {
+      await signIn("password", {
+        flow:     "signIn",
+        email:    form.email,
+        password: form.password,
+      });
+      setLoading(false);
+      setSuccess(true);
+      // Redirect home after brief success screen
+      await new Promise((r) => setTimeout(r, 1200));
+      router.push("/");
+    } catch (err: unknown) {
+      setLoading(false);
+      const message = err instanceof Error ? err.message : "Something went wrong.";
+      if (
+        message.toLowerCase().includes("invalid") ||
+        message.toLowerCase().includes("password") ||
+        message.toLowerCase().includes("not found")
+      ) {
+        setAuthError("Incorrect email or password. Please try again.");
+      } else {
+        setAuthError(message);
+      }
+    }
   };
 
   return (
@@ -363,9 +393,9 @@ export default function SignIn() {
 
           <div className="si-stats">
             {[
-              { num: "42",  label: "Sessions"   },
-              { num: "8",   label: "Players"    },
-              { num: "127", label: "Rounds"     },
+              { num: "42",  label: "Sessions" },
+              { num: "8",   label: "Players"  },
+              { num: "127", label: "Rounds"   },
             ].map((s, i) => (
               <div key={i} className="si-stat">
                 <div className="si-stat-num">{s.num}</div>
@@ -373,6 +403,7 @@ export default function SignIn() {
               </div>
             ))}
           </div>
+          
         </div>
 
         {/* ── RIGHT PANEL ── */}
@@ -419,6 +450,12 @@ export default function SignIn() {
                     <span className="si-forgot-link">Forgot password?</span>
                   </div>
 
+                  {authError && (
+                    <div className="si-auth-error">
+                      ⚠️ {authError}
+                    </div>
+                  )}
+
                   <button type="submit" className={`si-submit${loading ? " loading" : ""}`} disabled={loading}>
                     {loading ? <><div className="spinner" />Signing in…</> : <>🚀 Sign In</>}
                   </button>
@@ -432,7 +469,6 @@ export default function SignIn() {
 
                 <div className="si-switch">
                   New to Tucheze254?{" "}
-                  {/* TODO: replace href with router Link */}
                   <a href="/signup" className="si-switch-link">Create an account →</a>
                 </div>
               </>

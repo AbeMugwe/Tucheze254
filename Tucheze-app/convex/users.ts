@@ -19,11 +19,23 @@ export const currentUser = query({
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) return null;
-    return await ctx.db
+    return await ctx.db.get(userId as any);
+  },
+});
+
+/**
+ * Checks whether an email is already registered.
+ * Call this in SignUp before attempting signIn({ flow: "signUp" })
+ * to prevent duplicate accounts.
+ */
+export const checkEmailExists = query({
+  args: { email: v.string() },
+  handler: async (ctx, { email }) => {
+    const existing = await ctx.db
       .query("users")
-      .withIndex("by_email")
-      .filter((q) => q.eq(q.field("_id"), userId))
-      .unique();
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .first();
+    return existing !== null;
   },
 });
 
@@ -70,20 +82,34 @@ export const createProfile = mutation({
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Not authenticated");
 
-    // Prevent duplicate profiles if the mutation is called twice
-    const existing = await ctx.db
-      .query("users")
-      .withIndex("by_email", (q) => q.eq("email", args.email))
-      .unique();
-    if (existing) return existing._id;
+    // Convex Auth already inserted a bare { email } row using the auth userId as _id.
+    // Patch that existing document with the profile fields instead of inserting a new row.
+    const existing = await ctx.db.get(userId as any);
 
+
+    if (existing) {
+      await ctx.db.patch(userId as any, {
+        nickname:  args.nickname,
+        avatar:    args.avatar,
+        color:     args.color,
+        playStyle: args.playStyle,
+        elo:       1000,
+        wins:      0,
+        losses:    0,
+        winRate:   0,
+        badge:     "🆕 Newcomer",
+      });
+      return userId;
+    }
+
+    // Fallback: no row yet — insert fresh (shouldn't normally happen with Convex Auth)
     return await ctx.db.insert("users", {
       email:     args.email,
       nickname:  args.nickname,
       avatar:    args.avatar,
       color:     args.color,
       playStyle: args.playStyle,
-      elo:       1000,   // starting ELO
+      elo:       1000,
       wins:      0,
       losses:    0,
       winRate:   0,
@@ -110,11 +136,11 @@ export const recordResult = mutation({
     const user = await ctx.db.get(userId);
     if (!user) throw new Error("User not found");
 
-    const wins   = user.wins   + (won ? 1 : 0);
-    const losses = user.losses + (won ? 0 : 1);
-    const total  = wins + losses;
+    const wins    = (user.wins   ?? 0) + (won ? 1 : 0);
+    const losses  = (user.losses ?? 0) + (won ? 0 : 1);
+    const total   = wins + losses;
     const winRate = total > 0 ? Math.round((wins / total) * 100) : 0;
-    const elo     = Math.max(0, user.elo + eloChange);
+    const elo     = Math.max(0, (user.elo ?? 1000) + eloChange);
 
     await ctx.db.patch(userId, { wins, losses, winRate, elo });
   },

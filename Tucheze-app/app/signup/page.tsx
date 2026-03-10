@@ -2,7 +2,7 @@
 
 import { useState, FormEvent, ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { api } from "@/convex/_generated/api";
 
@@ -432,6 +432,12 @@ export default function SignUp() {
   const [showPw, setShowPw]     = useState<boolean>(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
+  // Check if the typed email is already registered (runs live as the user types)
+  const emailTaken = useQuery(
+    api.users.checkEmailExists,
+    form.email.includes("@") ? { email: form.email } : "skip"
+  );
+
   const strength = getPasswordStrength(form.password);
   const progress = calcProgress(form);
   const getError = (field: string): string | undefined => errors.find((e) => e.field === field)?.message;
@@ -457,6 +463,13 @@ export default function SignUp() {
     e.preventDefault();
     const errs = validate(form);
     if (errs.length > 0) { setErrors(errs); return; }
+
+    // Block submission if the email is already registered
+    if (emailTaken) {
+      setAuthError("An account with this email already exists. Please sign in instead.");
+      return;
+    }
+
     setErrors([]);
     setAuthError(null);
     setLoading(true);
@@ -628,7 +641,8 @@ export default function SignUp() {
                   <Field label="EMAIL ADDRESS" icon="📧" type="email"
                     value={form.email} placeholder="you@example.com"
                     onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                    error={getError("email")} autoComplete="email" />
+                    error={emailTaken ? "An account with this email already exists — sign in instead." : getError("email")}
+                    autoComplete="email" />
 
                   <Field label="PASSWORD" icon="🔒"
                     type={showPw ? "text" : "password"}
