@@ -17,6 +17,16 @@ interface SessionPlayer {
   rank: number;
 }
 
+interface RoundWinner {
+  gameIndex: number;
+  gameName:  string;
+  gameEmoji: string;
+  nickname:  string;
+  avatar:    string;
+  color:     string;
+  score:     number;
+}
+
 interface Session {
   _id: string;
   _creationTime: number;
@@ -27,12 +37,14 @@ interface Session {
   games: { name: string; emoji: string }[];
   players: SessionPlayer[];
   winner?: { nickname: string; avatar: string; color: string };
+  teamWinner?: { name: string; emoji: string; color: string; memberNicknames: string[] };
+  roundWinners?: RoundWinner[];
   totalRounds?: number;
   durationMinutes?: number;
   createdBy: string;
 }
 
-type FilterTab = "all" | "upcoming" | "completed";
+type FilterTab = "all" | "live" | "upcoming" | "completed";
 type SortKey   = "date" | "players" | "game";
 
 // ─── Fonts & CSS ─────────────────────────────────────────────────────────────
@@ -58,50 +70,6 @@ const css = `
     min-height: 100vh;
     color: var(--navy);
   }
-    nav {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 18px 0; position: sticky; top: 0; z-index: 100;
-    background: var(--white);
-    background-image: radial-gradient(circle, #ddd 1px, transparent 1px);
-    background-size: 28px 28px;
-    border-bottom: var(--border);
-  }
-  .logo {
-    font-family: 'Fredoka One', cursive; font-size: 1.8rem;
-    color: var(--coral); text-shadow: 3px 3px 0 var(--ink);
-    letter-spacing: 1px; display: flex; align-items: center; gap: 8px;
-  }
-  .logo-badge {
-    background: var(--yellow); border: var(--border); border-radius: 50%;
-    width: 36px; height: 36px; display: flex; align-items: center;
-    justify-content: center; font-size: 1.1rem; box-shadow: var(--shadow);
-  }
-  .nav-links { display: flex; gap: 10px; align-items: center; }
-  .nav-btn {
-    font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.85rem;
-    padding: 8px 18px; border: var(--border); border-radius: 50px; cursor: pointer;
-    transition: transform 0.1s, box-shadow 0.1s; text-decoration: none;
-    background: var(--white); color: var(--ink); box-shadow: var(--shadow);
-  }
-  .nav-btn:hover { transform: translate(-2px,-2px); box-shadow: 6px 6px 0 var(--ink); }
-  .nav-btn.primary { background: var(--coral); color: white; }
-  .nav-btn.logout  { background: var(--navy);  color: white; }
-
-  /* user chip in nav */
-  .nav-user-chip {
-    display: flex; align-items: center; gap: 8px;
-    border: var(--border); border-radius: 50px;
-    padding: 4px 14px 4px 4px;
-    background: var(--white); box-shadow: var(--shadow);
-    cursor: pointer; transition: transform 0.1s, box-shadow 0.1s;
-  }
-  .nav-user-chip:hover { transform: translate(-2px,-2px); box-shadow: 6px 6px 0 var(--ink); }
-  .nav-user-avatar {
-    width: 30px; height: 30px; border-radius: 50%;
-    border: 2px solid var(--ink);
-    display: flex; align-items: center; justify-content: center; font-size: 1rem;
-  }
-  .nav-user-name { font-weight: 800; font-size: 0.82rem; }
 
   /* ── HEADER ── */
   .sp-header {
@@ -294,6 +262,33 @@ const css = `
     border-radius: 50px; padding: 3px 10px;
     font-size: 0.72rem; font-weight: 800;
   }
+  /* Clickable variant used in drawer */
+  .sp-game-chip-btn {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--white); border: 2px solid rgba(26,26,46,0.2);
+    border-radius: 50px; padding: 5px 12px;
+    font-size: 0.78rem; font-weight: 800; cursor: pointer;
+    transition: all .12s; box-shadow: 2px 2px 0 rgba(26,26,46,0.1);
+    font-family: 'Nunito', sans-serif; color: var(--navy);
+  }
+  .sp-game-chip-btn:hover { transform: translate(-1px,-1px); box-shadow: 3px 3px 0 var(--navy); border-color: var(--navy); }
+  .sp-game-chip-btn.active { background: var(--navy); color: white; border-color: var(--navy); box-shadow: 3px 3px 0 rgba(0,0,0,0.3); }
+  /* Round winner panel */
+  .sp-round-winner {
+    border: 2.5px solid var(--navy); border-radius: 14px;
+    padding: 12px 16px; margin-top: 10px; margin-bottom: 16px;
+    background: white; box-shadow: 3px 3px 0 var(--navy);
+    animation: cardPop .2s ease both;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .sp-round-winner-avatar {
+    width: 38px; height: 38px; border-radius: 50%;
+    border: 2px solid var(--navy); display: flex; align-items: center;
+    justify-content: center; font-size: 1.1rem; flex-shrink: 0;
+  }
+  .sp-round-winner-label { font-size: 0.62rem; font-weight: 800; opacity: 0.45; text-transform: uppercase; letter-spacing: 0.5px; }
+  .sp-round-winner-name  { font-family: 'Fredoka One', cursive; font-size: 1rem; }
+  .sp-round-winner-pts   { font-family: 'Fredoka One', cursive; font-size: 0.85rem; color: var(--coral); margin-left: auto; flex-shrink: 0; }
 
   /* Players strip */
   .sp-players-strip { display: flex; align-items: center; gap: 6px; }
@@ -574,9 +569,9 @@ function SessionCard({ session, onClick, style }: {
               <div className="sp-card-stat-val">{session.players.length}</div>
               <div className="sp-card-stat-lbl">Players</div>
             </div>
-            {session.totalRounds !== undefined && (
+            {(session.totalRounds !== undefined || session.games.length > 1) && (
               <div className="sp-card-stat">
-                <div className="sp-card-stat-val">{session.totalRounds}</div>
+                <div className="sp-card-stat-val">{session.totalRounds ?? session.games.length}</div>
                 <div className="sp-card-stat-lbl">Rounds</div>
               </div>
             )}
@@ -589,8 +584,22 @@ function SessionCard({ session, onClick, style }: {
           </div>
         )}
 
-        {/* Winner */}
-        {session.winner && (
+        {/* Winner — show team winner if teams mode, else individual */}
+        {session.teamWinner ? (
+          <div className="sp-winner-row">
+            <span style={{ fontSize: "1rem" }}>🏆</span>
+            <div className="sp-winner-avatar" style={{ background: session.teamWinner.color }}>
+              {session.teamWinner.emoji}
+            </div>
+            <div>
+              <div className="sp-winner-label">Winning Team</div>
+              <div className="sp-winner-name">{session.teamWinner.name}</div>
+              <div style={{ fontSize:"0.65rem", fontWeight:700, opacity:0.5, marginTop:1 }}>
+                {session.teamWinner.memberNicknames.join(" · ")}
+              </div>
+            </div>
+          </div>
+        ) : session.winner ? (
           <div className="sp-winner-row">
             <span style={{ fontSize: "1rem" }}>🏆</span>
             <div className="sp-winner-avatar" style={{ background: session.winner.color }}>
@@ -601,7 +610,7 @@ function SessionCard({ session, onClick, style }: {
               <div className="sp-winner-name">{session.winner.nickname}</div>
             </div>
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* Footer */}
@@ -624,6 +633,14 @@ function SessionDrawer({ session, onClose }: { session: Session; onClose: () => 
     : session.status === "upcoming" ? "#4ECDC433" : "#FFE13533";
 
   const sortedPlayers = [...session.players].sort((a, b) => a.rank - b.rank);
+
+  // Which game chip is expanded to show its round winner
+  const [expandedGame, setExpandedGame] = useState<number | null>(null);
+
+  const isMultiGame  = session.games.length > 1;
+  const hasRoundData = (session.roundWinners ?? []).length > 0;
+
+  const rounds = session.totalRounds ?? (isMultiGame ? session.games.length : undefined);
 
   return (
     <div className="sp-overlay" onClick={onClose}>
@@ -655,7 +672,7 @@ function SessionDrawer({ session, onClose }: { session: Session; onClose: () => 
               <div className="sp-drawer-stat-lbl">Games</div>
             </div>
             <div className="sp-drawer-stat">
-              <div className="sp-drawer-stat-val">{session.totalRounds ?? "—"}</div>
+              <div className="sp-drawer-stat-val">{rounds ?? "—"}</div>
               <div className="sp-drawer-stat-lbl">Rounds</div>
             </div>
             <div className="sp-drawer-stat">
@@ -664,19 +681,86 @@ function SessionDrawer({ session, onClose }: { session: Session; onClose: () => 
             </div>
           </div>
 
-          {/* Games */}
-          <div className="sp-drawer-section">Games Played</div>
-          <div className="sp-games-row" style={{ marginBottom: 20 }}>
-            {session.games.map((g, i) => (
-              <div key={i} className="sp-game-chip" style={{ fontSize: "0.82rem", padding: "5px 14px" }}>
-                {g.emoji} {g.name}
-              </div>
-            ))}
+          {/* Games — clickable chips when multi-game + completed */}
+          <div className="sp-drawer-section">
+            {isMultiGame ? "Rounds Played" : "Game Played"}
+            {isMultiGame && hasRoundData && (
+              <span style={{ marginLeft: 6, fontWeight: 700, opacity: 0.45, fontSize: "0.65rem", textTransform: "none", letterSpacing: 0 }}>
+                · tap a round to see its winner
+              </span>
+            )}
+          </div>
+          <div className="sp-games-row" style={{ marginBottom: isMultiGame && hasRoundData ? 8 : 20, flexWrap: "wrap", gap: 6 }}>
+            {session.games.map((g, i) => {
+              const canExpand = isMultiGame && hasRoundData && session.status === "completed";
+              const isActive  = expandedGame === i;
+              if (canExpand) {
+                return (
+                  <button key={i}
+                    className={`sp-game-chip-btn${isActive ? " active" : ""}`}
+                    onClick={() => setExpandedGame(isActive ? null : i)}>
+                    {g.emoji} {g.name}
+                    <span style={{ opacity: 0.5, fontSize: "0.65rem" }}>{isActive ? " ▲" : " ▼"}</span>
+                  </button>
+                );
+              }
+              return (
+                <div key={i} className="sp-game-chip" style={{ fontSize: "0.82rem", padding: "5px 14px" }}>
+                  {g.emoji} {g.name}
+                </div>
+              );
+            })}
           </div>
 
-          {/* Final scores */}
+          {/* Per-game winner panel */}
+          {expandedGame !== null && (() => {
+            const rw = (session.roundWinners ?? []).find(r => r.gameIndex === expandedGame);
+            if (!rw) return null;
+            return (
+              <div className="sp-round-winner">
+                <span style={{ fontSize: "1rem" }}>🏅</span>
+                <div className="sp-round-winner-avatar" style={{ background: rw.color }}>
+                  {rw.avatar}
+                </div>
+                <div>
+                  <div className="sp-round-winner-label">Round winner — {rw.gameEmoji} {rw.gameName}</div>
+                  <div className="sp-round-winner-name">{rw.nickname}</div>
+                </div>
+                <div className="sp-round-winner-pts">{rw.score} pts</div>
+              </div>
+            );
+          })()}
+
+          {/* Final scores for completed sessions */}
           {session.status === "completed" && sortedPlayers.length > 0 && (
             <>
+              {/* Overall winner banner */}
+              {session.teamWinner ? (
+                <div style={{ background:"#FFE135", border:"2.5px solid #1a1a2e", borderRadius:14, padding:"11px 16px", marginBottom:16, display:"flex", alignItems:"center", gap:10, boxShadow:"3px 3px 0 #1a1a2e" }}>
+                  <span style={{ fontSize:"1.4rem" }}>{session.teamWinner.emoji}</span>
+                  <div>
+                    <div style={{ fontSize:"0.65rem", fontWeight:800, opacity:0.5, textTransform:"uppercase", letterSpacing:1 }}>
+                      {isMultiGame ? "Overall Winning Team" : "Winning Team"}
+                    </div>
+                    <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:"1.05rem" }}>{session.teamWinner.name}</div>
+                    <div style={{ fontSize:"0.65rem", fontWeight:700, opacity:0.5 }}>{session.teamWinner.memberNicknames.join(" · ")}</div>
+                  </div>
+                </div>
+              ) : session.winner ? (
+                <div style={{ background:"#FFE135", border:"2.5px solid #1a1a2e", borderRadius:14, padding:"11px 16px", marginBottom:16, display:"flex", alignItems:"center", gap:10, boxShadow:"3px 3px 0 #1a1a2e" }}>
+                  <span style={{ fontSize:"1.4rem" }}>🏆</span>
+                  <div className="sp-winner-avatar" style={{ background: session.winner.color, marginRight: 0 }}>
+                    {session.winner.avatar}
+                  </div>
+                  <div>
+                    <div style={{ fontSize:"0.65rem", fontWeight:800, opacity:0.5, textTransform:"uppercase", letterSpacing:1 }}>
+                      {isMultiGame ? "Overall Winner" : "Winner"}
+                    </div>
+                    <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:"1.05rem" }}>{session.winner.nickname}</div>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="sp-drawer-section">Final Standings</div>
               <div className="sp-scores-list">
                 {sortedPlayers.map((p) => (
@@ -711,68 +795,6 @@ function SessionDrawer({ session, onClose }: { session: Session; onClose: () => 
   );
 }
 
-// ─── Mock data (replace with useQuery(api.sessions.list) once backend is built) ──
-
-const MOCK_SESSIONS: Session[] = [
-  {
-    _id: "s1", _creationTime: Date.now() - 86400000 * 2,
-    name: "Friday Game Night #42", location: "Njoro's Place",
-    date: new Date(Date.now() - 86400000 * 2).toISOString(),
-    status: "completed",
-    games: [{ name: "Exploding Kittens", emoji: "🐱" }, { name: "UNO Extreme", emoji: "🎴" }],
-    players: [
-      { userId: "1", nickname: "Wanjiku", avatar: "😎", color: "#FF6B6B", score: 42, rank: 1 },
-      { userId: "2", nickname: "Otieno",  avatar: "🤠", color: "#4ECDC4", score: 38, rank: 2 },
-      { userId: "3", nickname: "Amara",   avatar: "🦁", color: "#FFE135", score: 31, rank: 3 },
-      { userId: "4", nickname: "Njoro",   avatar: "🐉", color: "#FF9ECD", score: 25, rank: 4 },
-    ],
-    winner: { nickname: "Wanjiku", avatar: "😎", color: "#FF6B6B" },
-    totalRounds: 8, durationMinutes: 95, createdBy: "1",
-  },
-  {
-    _id: "s2", _creationTime: Date.now() - 86400000 * 9,
-    name: "Saturday Chill #41", location: "Zawadi's Flat",
-    date: new Date(Date.now() - 86400000 * 9).toISOString(),
-    status: "completed",
-    games: [{ name: "Catan", emoji: "🏝️" }],
-    players: [
-      { userId: "5", nickname: "Zawadi", avatar: "🌟", color: "#C8F135", score: 55, rank: 1 },
-      { userId: "2", nickname: "Otieno", avatar: "🤠", color: "#4ECDC4", score: 48, rank: 2 },
-      { userId: "6", nickname: "Baraka", avatar: "🦊", color: "#A8DAFF", score: 39, rank: 3 },
-    ],
-    winner: { nickname: "Zawadi", avatar: "🌟", color: "#C8F135" },
-    totalRounds: 5, durationMinutes: 120, createdBy: "5",
-  },
-  {
-    _id: "s3", _creationTime: Date.now() - 86400000 * 15,
-    name: "Game Night #40", location: "Baraka's Spot",
-    date: new Date(Date.now() - 86400000 * 15).toISOString(),
-    status: "completed",
-    games: [{ name: "Codenames", emoji: "🕵️" }, { name: "Jenga", emoji: "🪵" }],
-    players: [
-      { userId: "3", nickname: "Amara",  avatar: "🦁", color: "#FFE135", score: 66, rank: 1 },
-      { userId: "1", nickname: "Wanjiku",avatar: "😎", color: "#FF6B6B", score: 61, rank: 2 },
-      { userId: "4", nickname: "Njoro",  avatar: "🐉", color: "#FF9ECD", score: 53, rank: 3 },
-      { userId: "5", nickname: "Zawadi", avatar: "🌟", color: "#C8F135", score: 44, rank: 4 },
-      { userId: "6", nickname: "Baraka", avatar: "🦊", color: "#A8DAFF", score: 33, rank: 5 },
-    ],
-    winner: { nickname: "Amara", avatar: "🦁", color: "#FFE135" },
-    totalRounds: 12, durationMinutes: 145, createdBy: "3",
-  },
-  {
-    _id: "s4", _creationTime: Date.now() + 86400000 * 3,
-    name: "Next Friday #43", location: "Wanjiku's Place",
-    date: new Date(Date.now() + 86400000 * 3).toISOString(),
-    status: "upcoming",
-    games: [{ name: "Pandemic", emoji: "🦠" }],
-    players: [
-      { userId: "1", nickname: "Wanjiku", avatar: "😎", color: "#FF6B6B", score: 0, rank: 1 },
-      { userId: "2", nickname: "Otieno",  avatar: "🤠", color: "#4ECDC4", score: 0, rank: 2 },
-    ],
-    createdBy: "1",
-  },
-];
-
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function SessionsPage() {
@@ -781,9 +803,10 @@ export default function SessionsPage() {
   const [sortBy,   setSortBy]   = useState<SortKey>("date");
   const [selected, setSelected] = useState<Session | null>(null);
 
-  // TODO: replace MOCK_SESSIONS with: const sessions = useQuery(api.sessions.list) ?? []
-  const sessions: Session[] = MOCK_SESSIONS;
-  const loading = false; // set to: sessions === undefined
+  // Live Convex query — returns undefined while loading, [] when empty
+  const rawSessions = useQuery(api.sessions.list);
+  const sessions: Session[] = (rawSessions ?? []) as unknown as Session[];
+  const loading = rawSessions === undefined;
 
   // Aggregate stats
   const totalSessions  = sessions.filter((s) => s.status === "completed").length;
@@ -797,8 +820,7 @@ export default function SessionsPage() {
   const filtered = useMemo(() => {
     let result = [...sessions];
 
-    if (filter === "upcoming")  result = result.filter((s) => s.status === "upcoming");
-    if (filter === "completed") result = result.filter((s) => s.status === "completed");
+    if (filter !== "all") result = result.filter((s) => s.status === filter);
 
     if (search) {
       const q = search.toLowerCase();
@@ -822,6 +844,7 @@ export default function SessionsPage() {
 
   const tabCounts = {
     all:       sessions.length,
+    live:      sessions.filter((s) => s.status === "live").length,
     upcoming:  sessions.filter((s) => s.status === "upcoming").length,
     completed: sessions.filter((s) => s.status === "completed").length,
   };
@@ -897,13 +920,13 @@ export default function SessionsPage() {
 
           {/* Filter tabs */}
           <div className="sp-tabs">
-            {(["all", "upcoming", "completed"] as FilterTab[]).map((tab) => (
+            {(["all", "live", "upcoming", "completed"] as FilterTab[]).map((tab) => (
               <button
                 key={tab}
                 className={`sp-tab${filter === tab ? " active" : ""}`}
                 onClick={() => setFilter(tab)}
               >
-                {tab === "all" ? "All Sessions" : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {tab === "all" ? "All Sessions" : tab === "live" ? "🔴 Live" : tab.charAt(0).toUpperCase() + tab.slice(1)}
                 <span className="sp-tab-count">{tabCounts[tab]}</span>
               </button>
             ))}
@@ -923,12 +946,26 @@ export default function SessionsPage() {
             </div>
           ) : filtered.length === 0 ? (
             <div className="sp-empty">
-              <div className="sp-empty-icon">📅</div>
-              <div className="sp-empty-title">No sessions found</div>
-              <div className="sp-empty-sub">Try adjusting your filters or search.</div>
-              <Link href="/sessions/new" className="sp-new-btn" style={{ marginTop: 0 }}>
-                ＋ Start your first session
-              </Link>
+              <div className="sp-empty-icon">{sessions.length === 0 ? "🎲" : "🔍"}</div>
+              <div className="sp-empty-title">
+                {sessions.length === 0 ? "No sessions yet!" : "No sessions match your filters"}
+              </div>
+              <div className="sp-empty-sub">
+                {sessions.length === 0
+                  ? "Launch your first game night — scores, winners and history will all show up here automatically."
+                  : "Try clearing the search or switching to All Sessions."}
+              </div>
+              {sessions.length === 0 && (
+                <Link href="/sessions/new" className="sp-new-btn" style={{ marginTop: 0 }}>
+                  ＋ Start your first session
+                </Link>
+              )}
+              {sessions.length > 0 && (
+                <button className="sp-new-btn" style={{ marginTop: 0, cursor: "pointer" }}
+                  onClick={() => { setFilter("all"); setSearch(""); }}>
+                  Clear filters
+                </button>
+              )}
             </div>
           ) : (
             <div className="sp-grid">

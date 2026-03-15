@@ -31,11 +31,29 @@ export const currentUser = query({
 export const checkEmailExists = query({
   args: { email: v.string() },
   handler: async (ctx, { email }) => {
-    const existing = await ctx.db
-      .query("users")
-      .withIndex("by_email", (q) => q.eq("email", email))
+    // Convex Auth stores credentials in authAccounts, not our custom users table
+    const account = await ctx.db
+      .query("authAccounts")
+      .withIndex("providerAndAccountId", (q) =>
+        q.eq("provider", "password").eq("providerAccountId", email)
+      )
       .first();
-    return existing !== null;
+    return account !== null;
+  },
+});
+
+/**
+ * Returns all users with a completed profile (has nickname).
+ * Used by NewSession to populate the player picker with real Convex IDs.
+ */
+export const list = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return [];
+    const all = await ctx.db.query("users").collect();
+    // Only return users who have completed their profile
+    return all.filter((u) => u.nickname);
   },
 });
 
@@ -48,15 +66,19 @@ export const checkEmailExists = query({
  */
 export const leaderboard = query({
   args: { limit: v.optional(v.number()) },
-  handler: async (ctx) => {
+  handler: async (ctx, { limit }) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) return [];
 
-    return await ctx.db
+    const users = await ctx.db
       .query("users")
       .withIndex("by_elo")
       .order("desc")
-      .take(10);
+      .collect();
+
+    // Only return users with a completed profile
+    const ranked = users.filter((u: any) => u.nickname);
+    return limit ? ranked.slice(0, limit) : ranked;
   },
 });
 
@@ -76,51 +98,78 @@ export const createProfile = mutation({
     avatar:    v.string(),
     color:     v.string(),
     playStyle: v.array(v.string()),
-    email:     v.string(),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Not authenticated");
 
-    // Convex Auth already inserted a bare { email } row using the auth userId as _id.
-    // Patch that existing document with the profile fields instead of inserting a new row.
     const existing = await ctx.db.get(userId as any);
 
-
-    if (existing) {
-      await ctx.db.patch(userId as any, {
-        nickname:  args.nickname,
-        avatar:    args.avatar,
-        color:     args.color,
-        playStyle: args.playStyle,
-        elo:       1000,
-        wins:      0,
-        losses:    0,
-        winRate:   0,
-        badge:     "🆕 Newcomer",
-      });
-      return userId;
+    if (!existing) {
+      // Auth row not written yet — throw so caller can retry
+      throw new Error("AUTH_ROW_NOT_READY");
     }
 
-    // Fallback: no row yet — insert fresh (shouldn't normally happen with Convex Auth)
-    return await ctx.db.insert("users", {
-      email:     args.email,
+    const doc = existing as any;
+    await ctx.db.patch(userId as any, {
       nickname:  args.nickname,
       avatar:    args.avatar,
       color:     args.color,
       playStyle: args.playStyle,
-      elo:       1000,
-      wins:      0,
-      losses:    0,
-      winRate:   0,
-      badge:     "🆕 Newcomer",
+      elo:       doc.elo     ?? 1000,
+      wins:      doc.wins    ?? 0,
+      losses:    doc.losses  ?? 0,
+      winRate:   doc.winRate ?? 0,
+      badge:     doc.badge   ?? "🆕 Newcomer",
     });
+    return userId;
   },
 });
 
 /**
- * Updates a user's ELO, wins, losses and recalculates win rate.
- * Called at the end of a session when results are recorded.
+ * Get any user by ID — used by the profile page for viewing others' profiles.
+ */
+export const getById = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }) => {
+    return await ctx.db.get(userId);
+  },
+});
+
+/**
+ * Get all completed sessions a user participated in, most recent first.
+ */
+export const sessionsForUser = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }) => {
+    const all = await ctx.db
+      .query("sessions")
+      .withIndex("by_status", (q) => q.eq("status", "completed"))
+      .order("desc")
+      .collect();
+    return all.filter((s: any) =>
+      s.players?.some((p: any) => p.userId === userId)
+    );
+  },
+});
+
+/**
+ * Update the current user's profile (nickname, avatar, color, playStyle).
+ */
+export const updateProfile = mutation({
+  args: {
+    nickname:  v.string(),
+    avatar:    v.string(),
+    color:     v.string(),
+    playStyle: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Not authenticated");
+    await ctx.db.patch(userId as any, args);
+  },
+});
+ /* Called at the end of a session when results are recorded.
  *
  * Usage:
  *   const recordResult = useMutation(api.users.recordResult);

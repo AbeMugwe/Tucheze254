@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, FormEvent, ChangeEvent } from "react";
+import Link from "next/link";
+import { useState, useEffect, useRef, FormEvent, ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
 import { useAuthActions } from "@convex-dev/auth/react";
@@ -422,21 +423,51 @@ export default function SignUp() {
   const router        = useRouter();
   const { signIn }    = useAuthActions();
   const createProfile = useMutation(api.users.createProfile);
+  const currentUser   = useQuery(api.users.currentUser);
 
   const [form, setForm] = useState<SignUpForm>({
     nickname: "", email: "", password: "", confirmPassword: "", avatar: "", playStyle: [],
   });
-  const [errors, setErrors]     = useState<FormError[]>([]);
-  const [loading, setLoading]   = useState<boolean>(false);
-  const [success, setSuccess]   = useState<boolean>(false);
-  const [showPw, setShowPw]     = useState<boolean>(false);
-  const [authError, setAuthError] = useState<string | null>(null);
+  const [errors, setErrors]         = useState<FormError[]>([]);
+  const [loading, setLoading]       = useState<boolean>(false);
+  const [success, setSuccess]       = useState<boolean>(false);
+  const [showPw, setShowPw]         = useState<boolean>(false);
+  const [authError, setAuthError]   = useState<string | null>(null);
+
+  // Pending profile is set after signIn succeeds — useEffect watches currentUser
+  // and fires createProfile once the auth session is confirmed server-side
+  const pendingProfile = useRef<{ nickname: string; avatar: string; playStyle: string[] } | null>(null);
 
   // Check if the typed email is already registered (runs live as the user types)
   const emailTaken = useQuery(
     api.users.checkEmailExists,
     form.email.includes("@") ? { email: form.email } : "skip"
   );
+
+  // ── Reactive profile creation ──────────────────────────────────────────────
+  // Fires once currentUser transitions from undefined/null → a real user object
+  // At that point the auth row definitely exists and ctx.db.get() will succeed
+  useEffect(() => {
+    if (!currentUser || !pendingProfile.current) return;
+    const profile = pendingProfile.current;
+    pendingProfile.current = null; // consume it — don't run twice
+
+    createProfile({
+      nickname:  profile.nickname,
+      avatar:    profile.avatar,
+      color:     "#4ECDC4",
+      playStyle: profile.playStyle,
+    })
+      .then(() => {
+        setLoading(false);
+        setSuccess(true);
+        setTimeout(() => router.push("/"), 1800);
+      })
+      .catch((err: unknown) => {
+        setLoading(false);
+        setAuthError(err instanceof Error ? err.message : "Failed to save profile. Please try again.");
+      });
+  }, [currentUser]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const strength = getPasswordStrength(form.password);
   const progress = calcProgress(form);
@@ -464,7 +495,6 @@ export default function SignUp() {
     const errs = validate(form);
     if (errs.length > 0) { setErrors(errs); return; }
 
-    // Block submission if the email is already registered
     if (emailTaken) {
       setAuthError("An account with this email already exists. Please sign in instead.");
       return;
@@ -475,30 +505,25 @@ export default function SignUp() {
     setLoading(true);
 
     try {
-      // 1. Create the Convex Auth account (email + password)
+      // Store the profile data — useEffect will call createProfile once
+      // currentUser becomes non-null (i.e. auth row is ready on the server)
+      pendingProfile.current = {
+        nickname:  form.nickname,
+        avatar:    form.avatar,
+        playStyle: form.playStyle,
+      };
+
       await signIn("password", {
         flow:     "signUp",
         email:    form.email,
         password: form.password,
       });
 
-      // 2. Save the extended profile (nickname, avatar, play style, etc.)
-      await createProfile({
-        email:     form.email,
-        nickname:  form.nickname,
-        avatar:    form.avatar,
-        color:     "#4ECDC4",
-        playStyle: form.playStyle,
-      });
-
-      setLoading(false);
-      setSuccess(true);
-
-      // 3. Redirect home after showing the success screen briefly
-      await new Promise((r) => setTimeout(r, 1800));
-      router.push("/");
+      // signIn resolves — currentUser will update reactively, triggering the useEffect
+      // loading stays true until the effect completes
 
     } catch (err: unknown) {
+      pendingProfile.current = null; // clear pending if signIn itself failed
       setLoading(false);
       const message = err instanceof Error ? err.message : "Something went wrong. Please try again.";
       if (message.toLowerCase().includes("already exists") || message.toLowerCase().includes("duplicate")) {

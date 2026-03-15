@@ -6,7 +6,7 @@ export default defineSchema({
   ...authTables,
 
   users: defineTable({
-    email:     v.string(),
+    email:     v.optional(v.string()),
     nickname:  v.optional(v.string()),
     avatar:    v.optional(v.string()),
     color:     v.optional(v.string()),
@@ -37,6 +37,7 @@ export default defineSchema({
     description:    v.string(),
     lastPlayed:     v.optional(v.string()),
     trending:       v.optional(v.boolean()),
+    gameType:       v.optional(v.union(v.literal("individual"), v.literal("team"), v.literal("both"))),
   })
     .index("by_created_by", ["createdBy"])
     .index("by_category",   ["category"])
@@ -53,8 +54,9 @@ export default defineSchema({
                      ),
     // Snapshot of games played (name + emoji, not IDs, in case games are deleted)
     games: v.array(v.object({
-      name:  v.string(),
-      emoji: v.string(),
+      name:   v.string(),
+      emoji:  v.string(),
+      gameId: v.optional(v.id("games")),
     })),
     // Player scores — stored as a snapshot so historical data is stable
     players: v.array(v.object({
@@ -71,6 +73,23 @@ export default defineSchema({
       avatar:   v.string(),
       color:    v.string(),
     })),
+    // Populated when playFormat === "teams"
+    teamWinner: v.optional(v.object({
+      name:             v.string(),
+      emoji:            v.string(),
+      color:            v.string(),
+      memberNicknames:  v.array(v.string()),
+    })),
+    // Per-round (per-game) winners — index matches games[] array
+    roundWinners: v.optional(v.array(v.object({
+      gameIndex: v.number(),
+      gameName:  v.string(),
+      gameEmoji: v.string(),
+      nickname:  v.string(),
+      avatar:    v.string(),
+      color:     v.string(),
+      score:     v.number(),
+    }))),
     totalRounds:     v.optional(v.number()),
     durationMinutes: v.optional(v.number()),
     createdBy:       v.id("users"),
@@ -78,4 +97,16 @@ export default defineSchema({
     .index("by_created_by", ["createdBy"])
     .index("by_status",     ["status"])
     .index("by_date",       ["date"]),
+  polls: defineTable({
+    question:  v.string(),
+    createdBy: v.id("users"),
+    closesAt:  v.string(),     // ISO string
+    closed:    v.boolean(),
+    options:   v.array(v.object({
+      game:    v.string(),
+      emoji:   v.string(),
+      votes:   v.array(v.id("users")),  // array of userIds who voted for this
+    })),
+  })
+    .index("by_closed", ["closed"]),
 });

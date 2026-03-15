@@ -24,6 +24,7 @@ interface Game {
   description: string;
   lastPlayed?: string;
   trending?: boolean;
+  gameType?: "individual" | "team" | "both";
 }
 
 interface UserProfile {
@@ -464,11 +465,13 @@ const css = `
   }
 `;
 
-// ─── Trending threshold ───────────────────────────────────────────────────────
-// A game is "trending" if it's in the top 4 by timesPlayed
+// ─── Trending ─────────────────────────────────────────────────────────────────
+// Only games played MORE than 5 times are eligible for the Trending strip.
+// Among those, show the top 4 by play count.
 
 function computeTrending(games: Game[]): Set<string> {
-  const sorted = [...games].sort((a, b) => b.timesPlayed - a.timesPlayed);
+  const eligible = games.filter((g) => g.timesPlayed > 5);
+  const sorted   = [...eligible].sort((a, b) => b.timesPlayed - a.timesPlayed);
   return new Set(sorted.slice(0, 4).map((g) => g._id));
 }
 
@@ -493,7 +496,6 @@ function StarRating({ rating }: { rating: number }) {
   );
 }
 
-// Renders stacked owner avatars using nickname initials
 function OwnerAvatars({ ownerIds, userMap }: { ownerIds: string[]; userMap: Map<string, UserProfile> }) {
   const shown = ownerIds.slice(0, 3);
   const extra = ownerIds.length - 3;
@@ -605,6 +607,17 @@ function GameDrawer({ game, trending, userMap, onClose, onEdit }: {
             )}
           </div>
           <div className="gl-drawer-cat">{game.category} · {game.players} players · {game.duration}</div>
+          <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
+            {game.gameType && (
+              <span style={{
+                background: game.gameType === "team" ? "#4ECDC4" : game.gameType === "individual" ? "#FFE135" : "#C8F135",
+                border: "2px solid var(--navy)", borderRadius: 50, padding: "3px 12px",
+                fontSize: "0.72rem", fontWeight: 800, boxShadow: "2px 2px 0 var(--navy)",
+              }}>
+                {game.gameType === "team" ? "🫂 Team Game" : game.gameType === "individual" ? "🧍 Individual Game" : "🔀 Individual or Teams"}
+              </span>
+            )}
+          </div>
           <div className="gl-drawer-desc">{game.description}</div>
 
           <div className="gl-drawer-stats">
@@ -655,7 +668,14 @@ function GameDrawer({ game, trending, userMap, onClose, onEdit }: {
           )}
 
           <div className="gl-drawer-actions">
-            <button className="gl-drawer-btn primary">🎲 Play Tonight</button>
+            <Link
+              href={`/sessions/new?gameId=${game._id}`}
+              className="gl-drawer-btn primary"
+              onClick={(e) => e.stopPropagation()}
+              style={{ textDecoration: "none" }}
+            >
+              🎲 Play
+            </Link>
             <button className="gl-drawer-btn secondary" onClick={(e) => { e.stopPropagation(); onEdit(); }}>
               ✏️ Edit Game
             </button>
@@ -666,7 +686,7 @@ function GameDrawer({ game, trending, userMap, onClose, onEdit }: {
   );
 }
 
-// ─── Shared Game Form (used by both Add and Edit) ─────────────────────────────
+// ─── Shared Game Form ─────────────────────────────────────────────────────────
 
 interface GameFormValues {
   name: string;
@@ -680,12 +700,13 @@ interface GameFormValues {
   color: string;
   description: string;
   lastPlayed: string;
+  gameType: "individual" | "team" | "both";
 }
 
 const DEFAULT_FORM: GameFormValues = {
   name: "", emoji: "🎲", category: "Strategy", players: "2–4",
   duration: "30 min", difficulty: 1, tagsText: "", rating: 4,
-color: "#FFE135", description: "", lastPlayed: "",
+  color: "#FFE135", description: "", lastPlayed: "", gameType: "both",
 };
 
 function GameFormFields({ form, update }: {
@@ -772,6 +793,30 @@ function GameFormFields({ form, update }: {
           style={{ width: "100%", height: 44, border: "var(--border)", borderRadius: 12,
             background: "white", boxShadow: "var(--shadow)", cursor: "pointer" }} />
       </div>
+
+      <div className="gl-form-field">
+        <div className="gl-drawer-section-title">Game Type</div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+          {(["individual", "team", "both"] as const).map((type) => {
+            const labels = { individual: "🧍 Individual", team: "🫂 Team", both: "🔀 Both" };
+            const descs  = { individual: "Solo scoring", team: "Team scoring", both: "Works either way" };
+            const active = form.gameType === type;
+            return (
+              <div key={type} onClick={() => update("gameType", type)}
+                style={{
+                  border: `2.5px solid ${active ? "var(--mint)" : "var(--navy)"}`,
+                  borderRadius: 12, padding: "10px 8px", textAlign: "center", cursor: "pointer",
+                  background: active ? "rgba(78,205,196,0.1)" : "white",
+                  boxShadow: active ? "3px 3px 0 var(--mint)" : "2px 2px 0 var(--navy)",
+                  transition: "all .12s",
+                }}>
+                <div style={{ fontWeight: 800, fontSize: "0.8rem" }}>{labels[type]}</div>
+                <div style={{ fontSize: "0.65rem", fontWeight: 700, opacity: 0.5, marginTop: 2 }}>{descs[type]}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
@@ -848,6 +893,7 @@ function EditGameModal({ game, onClose, onSave }: {
     color:       game.color,
     description: game.description,
     lastPlayed:  game.lastPlayed ?? "",
+    gameType:    game.gameType ?? "both",
   });
   const [submitting, setSubmitting] = useState(false);
 
@@ -896,23 +942,22 @@ function EditGameModal({ game, onClose, onSave }: {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function GamesPage() {
-  const currentUser     = useQuery(api.users.currentUser) as { _id: string; nickname?: string; avatar?: string; color?: string } | null | undefined;
-  const games           = useQuery(api.games.list);
-  const allUsers        = useQuery(api.users.leaderboard, currentUser ? {} : "skip") as UserProfile[] | undefined;
-  const addGame         = useMutation(api.games.add);
-  const updateGame     = useMutation(api.games.update);
+  const currentUser = useQuery(api.users.currentUser) as { _id: string; nickname?: string; avatar?: string; color?: string } | null | undefined;
+  const games       = useQuery(api.games.list);
+  const allUsers    = useQuery(api.users.leaderboard, currentUser ? {} : "skip") as UserProfile[] | undefined;
+  const addGame     = useMutation(api.games.add);
+  const updateGame  = useMutation(api.games.update);
 
-  const [search,       setSearch]       = useState("");
-  const [category,     setCategory]     = useState("All");
-  const [difficulty,   setDifficulty]   = useState("Any");
-  const [activeTags,   setActiveTags]   = useState<string[]>([]);
-  const [sortBy,       setSortBy]       = useState<SortKey>("timesPlayed");
-  const [viewMode,     setViewMode]     = useState<ViewMode>("grid");
-  const [selected,     setSelected]     = useState<Game | null>(null);
-  const [showAdd,      setShowAdd]      = useState(false);
-  const [editingGame,  setEditingGame]  = useState<Game | null>(null);
+  const [search,      setSearch]      = useState("");
+  const [category,    setCategory]    = useState("All");
+  const [difficulty,  setDifficulty]  = useState("Any");
+  const [activeTags,  setActiveTags]  = useState<string[]>([]);
+  const [sortBy,      setSortBy]      = useState<SortKey>("timesPlayed");
+  const [viewMode,    setViewMode]    = useState<ViewMode>("grid");
+  const [selected,    setSelected]    = useState<Game | null>(null);
+  const [showAdd,     setShowAdd]     = useState(false);
+  const [editingGame, setEditingGame] = useState<Game | null>(null);
 
-  // Build a map of userId -> UserProfile for resolving owner names
   const userMap = useMemo(() => {
     const map = new Map<string, UserProfile>();
     (allUsers ?? []).forEach((u) => map.set(u._id, u));
@@ -920,15 +965,14 @@ export default function GamesPage() {
     return map;
   }, [allUsers, currentUser]);
 
-  // Compute trending from play count (top 4)
-  const trendingIds = useMemo(() => computeTrending(games ?? []), [games]);
+  // Only games with >5 plays are eligible; show top 4 among those
+  const trendingIds   = useMemo(() => computeTrending(games ?? []), [games]);
+  const trendingGames = useMemo(() => (games ?? []).filter((g) => trendingIds.has(g._id)), [games, trendingIds]);
 
-  const toggleTag = (tag: string) =>
+  const toggleTag   = (tag: string) =>
     setActiveTags((prev) => prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]);
-
   const clearFilters = () => { setSearch(""); setCategory("All"); setDifficulty("Any"); setActiveTags([]); };
-
-  const hasFilters = search || category !== "All" || difficulty !== "Any" || activeTags.length > 0;
+  const hasFilters   = search || category !== "All" || difficulty !== "Any" || activeTags.length > 0;
 
   const filtered = useMemo(() => {
     let result = [...(games ?? [])];
@@ -954,14 +998,13 @@ export default function GamesPage() {
     return result;
   }, [games, search, category, difficulty, activeTags, sortBy]);
 
-  const trendingGames = (games ?? []).filter((g) => trendingIds.has(g._id));
-
   const handleAddGame = async (values: Omit<GameFormValues, "tagsText"> & { tags: string[] }) => {
     await addGame({
       name: values.name, emoji: values.emoji, category: values.category,
       players: values.players, duration: values.duration, difficulty: values.difficulty,
-      tags: values.tags, rating: values.rating,color: values.color, description: values.description,
+      tags: values.tags, rating: values.rating, color: values.color, description: values.description,
       lastPlayed: values.lastPlayed || undefined,
+      gameType: values.gameType,
     });
   };
 
@@ -970,9 +1013,10 @@ export default function GamesPage() {
       id: _id as any,
       name: values.name, emoji: values.emoji, category: values.category,
       players: values.players, duration: values.duration, difficulty: values.difficulty,
-      tags: values.tags, rating: values.rating, 
+      tags: values.tags, rating: values.rating,
       color: values.color, description: values.description,
       lastPlayed: values.lastPlayed || undefined,
+      gameType: values.gameType,
     });
   };
 
@@ -1021,7 +1065,7 @@ export default function GamesPage() {
         {/* ── BODY ── */}
         <div className="gl-body">
 
-          {/* Trending strip */}
+          {/* Trending strip — only shown when no filters active and ≥1 game has >5 plays */}
           {!hasFilters && trendingGames.length > 0 && (
             <div className="gl-trending">
               <div className="gl-trending-title">🔥 Trending this week</div>

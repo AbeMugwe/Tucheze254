@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useEffect, ReactNode } from "react";
-import { useQuery } from "convex/react";
-import { useAuthActions } from "@convex-dev/auth/react";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import Navbar from "@/components/Navbar";
 
@@ -10,36 +9,17 @@ import Navbar from "@/components/Navbar";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-// Mirrors your Convex `users` table schema
 interface ConvexUser {
   _id: string;
   nickname: string;
-  avatar: string;       // emoji e.g. "😎"
-  color: string;        // hex e.g. "#FF6B6B"
+  avatar: string;
+  color: string;
   elo: number;
   wins: number;
-  winRate: number;      // 0–100
-  badge: string;        // e.g. "🔥 Comeback King"
+  winRate: number;
+  badge: string;
 }
 
-// Mirrors your Convex `sessions` table
-interface ConvexSession {
-  _id: string;
-  name: string;
-  date: string;
-  location: string;
-  emoji: string;
-  playerAvatars: string[];
-  rsvpCount: number;
-  bg: string;
-  type: "upcoming" | "recent";
-  game?: string;
-  winner?: string;
-  gameIcon?: string;
-  gameBg?: string;
-}
-
-// Mirrors your Convex `stats` table (group-level aggregate)
 interface GroupStats {
   sessionsPlayed: number;
   activePlayers: number;
@@ -47,21 +27,15 @@ interface GroupStats {
   totalRounds: number;
 }
 
-interface PollOption {
-  game: string;
-  emoji: string;
-  votes: number;
-  total: number;
-}
-
 interface ActivityItem {
   icon: string;
-  text: ReactNode;
+  text: string;
   time: string;
   bg: string;
+  ts: number;
 }
 
-type LeaderboardTab = "season" | "all-time" | "monthly";
+
 
 
 
@@ -89,52 +63,6 @@ const styles = `
     color: var(--ink); overflow-x: hidden;
   }
   .page { max-width: 1100px; margin: 0 auto; padding: 0 20px 80px; }
-
-  /* ── NAV ── */
-  nav {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 18px 0; position: sticky; top: 0; z-index: 100;
-    background: var(--white);
-    background-image: radial-gradient(circle, #ddd 1px, transparent 1px);
-    background-size: 28px 28px;
-    border-bottom: var(--border);
-  }
-  .logo {
-    font-family: 'Fredoka One', cursive; font-size: 1.8rem;
-    color: var(--coral); text-shadow: 3px 3px 0 var(--ink);
-    letter-spacing: 1px; display: flex; align-items: center; gap: 8px;
-  }
-  .logo-badge {
-    background: var(--yellow); border: var(--border); border-radius: 50%;
-    width: 36px; height: 36px; display: flex; align-items: center;
-    justify-content: center; font-size: 1.1rem; box-shadow: var(--shadow);
-  }
-  .nav-links { display: flex; gap: 10px; align-items: center; }
-  .nav-btn {
-    font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.85rem;
-    padding: 8px 18px; border: var(--border); border-radius: 50px; cursor: pointer;
-    transition: transform 0.1s, box-shadow 0.1s; text-decoration: none;
-    background: var(--white); color: var(--ink); box-shadow: var(--shadow);
-  }
-  .nav-btn:hover { transform: translate(-2px,-2px); box-shadow: 6px 6px 0 var(--ink); }
-  .nav-btn.primary { background: var(--coral); color: white; }
-  .nav-btn.logout  { background: var(--navy);  color: white; }
-
-  /* user chip in nav */
-  .nav-user-chip {
-    display: flex; align-items: center; gap: 8px;
-    border: var(--border); border-radius: 50px;
-    padding: 4px 14px 4px 4px;
-    background: var(--white); box-shadow: var(--shadow);
-    cursor: pointer; transition: transform 0.1s, box-shadow 0.1s;
-  }
-  .nav-user-chip:hover { transform: translate(-2px,-2px); box-shadow: 6px 6px 0 var(--ink); }
-  .nav-user-avatar {
-    width: 30px; height: 30px; border-radius: 50%;
-    border: 2px solid var(--ink);
-    display: flex; align-items: center; justify-content: center; font-size: 1rem;
-  }
-  .nav-user-name { font-weight: 800; font-size: 0.82rem; }
 
   /* ── HERO ── */
   .hero {
@@ -453,35 +381,72 @@ const NAV_ITEMS: [string, string][] = [
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function Tucheze254Home() {
-  const [activeTab, setActiveTab] = useState<LeaderboardTab>("season");
-  const [votedFor,  setVotedFor]  = useState<number | null>(null);
 
-  // ── Auth (real Convex) ────────────────────────────────────────────────────
-  const { signOut: _signOut } = useAuthActions();
+  // ── Auth ──────────────────────────────────────────────────────────────────
   const _currentUser = useQuery(api.users.currentUser);
-  // undefined = still loading, null = logged out, object = logged in
-  // Cast to our local interface so TypeScript treats profile fields as non-optional
-  const currentUser = _currentUser as ConvexUser | null | undefined;
+  const currentUser  = _currentUser as ConvexUser | null | undefined;
 
-  const signOut = async () => {
-    await _signOut();
+  // ── Real Convex queries ───────────────────────────────────────────────────
+  const skip = currentUser ? {} : "skip";
+  const leaderboard      = useQuery(api.users.leaderboard,      currentUser ? {} : "skip");
+  const groupStatsRaw    = useQuery(api.sessions.groupStats,     skip) as GroupStats | null | undefined;
+  const upcomingRaw      = useQuery(api.sessions.upcoming,       skip);
+  const recentRaw        = useQuery(api.sessions.recent,         skip);
+  const activityRaw      = useQuery(api.sessions.activityFeed,   skip) as ActivityItem[] | null | undefined;
+  const pollRaw          = useQuery(api.polls.active,            skip);
+  const castVote         = useMutation(api.polls.vote);
+  const startPoll        = useMutation(api.polls.start);
+
+  // Normalise — undefined = loading, null/[] = empty
+  const groupStats       = groupStatsRaw   ?? undefined;
+  const upcomingSessions = upcomingRaw     as any[] | undefined;
+  const recentSessions   = recentRaw       as any[] | undefined;
+  const activityFeed     = activityRaw     ?? undefined;
+  const poll             = pollRaw         as any | null | undefined;
+
+  // ── Live countdown (ticks every second client-side) ───────────────────────
+  const [secondsLeft, setSecondsLeft] = useState<number>(0);
+  const [startingPoll, setStartingPoll] = useState(false);
+
+  useEffect(() => {
+    if (!poll?.closesAt) { setSecondsLeft(0); return; }
+    const tick = () => {
+      const secs = Math.max(0, Math.round((new Date(poll.closesAt).getTime() - Date.now()) / 1000));
+      setSecondsLeft(secs);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [poll?.closesAt]);
+
+  const pollExpired = poll ? secondsLeft === 0 : false;
+
+  // Format mm:ss countdown
+  const formatCountdown = (secs: number) => {
+    const m = Math.floor(secs / 60).toString().padStart(2, "0");
+    const s = (secs % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
   };
 
-  // ── Suppress the unused useEffect warning — no longer needed ──────────────
-  useEffect(() => {}, []);
+  const handleVote = async (optionIndex: number) => {
+    if (!poll || pollExpired) return;
+    try {
+      await castVote({ pollId: poll._id, optionIndex });
+    } catch (e) {
+      console.error("Vote failed:", e);
+    }
+  };
 
-  // ── Data queries ─────────────────────────────────────────────────────────
-  // These return undefined while loading, null when unauthenticated, or data.
-  const leaderboard      = useQuery(api.users.leaderboard, currentUser ? {} : "skip");
-  // Sessions, stats, polls and activity will use their own query files once built.
-  // For now they stay as undefined (showing skeleton/empty states).
-  const upcomingSessions  = undefined as ConvexSession[] | undefined;
-  const recentSessions    = undefined as ConvexSession[] | undefined;
-  const groupStats        = undefined as GroupStats     | undefined;
-  const pollOptions       = undefined as PollOption[]   | undefined;
-  const activityFeed      = undefined as ActivityItem[] | undefined;
-
-  const handleVote = (idx: number) => setVotedFor(idx);
+  const handleStartPoll = async () => {
+    setStartingPoll(true);
+    try {
+      await startPoll({});
+    } catch (e) {
+      console.error("Start poll failed:", e);
+    } finally {
+      setStartingPoll(false);
+    }
+  };
 
   return (
     <>
@@ -489,7 +454,7 @@ export default function Tucheze254Home() {
       <div className="page">
 
         {/* ── NAV ── */}
-        <Navbar/>
+        <Navbar />
 
         {/* ── HERO ── */}
         <div className="hero">
@@ -499,7 +464,7 @@ export default function Tucheze254Home() {
                 🔴 LIVE SESSION
               </span>
               <span style={{ background:"#C8F135", border:"2.5px solid #1a1a2e", borderRadius:50, padding:"4px 14px", fontSize:"0.75rem", fontWeight:800, boxShadow:"2px 2px 0 #1a1a2e" }}>
-                Game Night
+                Friday Game Night
               </span>
             </div>
 
@@ -587,55 +552,57 @@ export default function Tucheze254Home() {
             {/* ── LEADERBOARD ── */}
             <div className="section-header">
               <div className="section-title">
-                🏆 Leaderboard 
+                🏆 Leaderboard <span className="section-pill">ELO Rankings</span>
               </div>
-              <button className="btn btn-navy" style={{ fontSize:"0.8rem", padding:"8px 16px" }}>View All →</button>
+              <a href="/leaderboard" className="btn btn-navy" style={{ fontSize:"0.8rem", padding:"8px 16px", textDecoration:"none" }}>View Full →</a>
             </div>
             <div className="leaderboard-card">
               <div className="lb-header">
                 <div className="lb-title">🎖️ Top Players</div>
-                <div className="lb-tabs">
-                  {(["season","all-time","monthly"] as LeaderboardTab[]).map((t) => (
-                    <button key={t} className={`lb-tab${activeTab===t?" active":""}`} onClick={() => setActiveTab(t)}>
-                      {t.charAt(0).toUpperCase() + t.slice(1).replace("-"," ")}
-                    </button>
-                  ))}
-                </div>
+                <div style={{ fontSize:"0.72rem", fontWeight:800, color:"rgba(255,255,255,0.4)" }}>ELO · Wins · Win Rate</div>
               </div>
 
               {leaderboard === undefined || leaderboard === null ? (
-                // Loading skeletons (undefined = loading, null = not yet authed)
                 Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)
               ) : leaderboard.length === 0 ? (
                 <div style={{ padding: 32 }}>
                   <EmptyState icon="🏆" title="No players yet" sub="Players will appear here once they join and play." />
                 </div>
               ) : (
-                leaderboard.map((p, i) => (
-                  <div key={p._id} className={`lb-row${i===0?" gold":""}`}>
-                    <div className={`lb-rank rank-${i+1}`}>{RANK_MEDALS[i] ?? i+1}</div>
-                    <div className="lb-player">
-                      <div className="lb-avatar" style={{ background: p.color }}>{p.avatar}</div>
-                      <div>
-                        <div className="lb-name">{p.nickname}</div>
-                        <div className="lb-badge">{p.badge}</div>
+                (leaderboard as any[]).slice(0, 8).map((p: any, i: number) => {
+                  const elo = p.elo ?? 1000;
+                  const eloColor = elo >= 1800 ? "#FFE135" : elo >= 1600 ? "#FF6B6B" : elo >= 1400 ? "#4ECDC4" : elo >= 1200 ? "#FF9ECD" : "#C8F135";
+                  const isMe = (currentUser as any)?._id === p._id;
+                  return (
+                    <div key={p._id} className={`lb-row${i===0?" gold":""}`}
+                      style={isMe ? { borderLeft:"4px solid #4ECDC4", background:"#f0fdfb" } : {}}>
+                      <div className={`lb-rank rank-${i+1}`}>{(RANK_MEDALS as any)[i] ?? `#${i+1}`}</div>
+                      <div className="lb-player">
+                        <div className="lb-avatar" style={{ background: p.color }}>{p.avatar}</div>
+                        <div>
+                          <div className="lb-name">
+                            {p.nickname}
+                            {isMe && <span style={{ fontSize:"0.6rem", fontWeight:900, background:"#4ECDC4", color:"#1a1a2e", borderRadius:50, padding:"1px 6px", marginLeft:6 }}>You</span>}
+                          </div>
+                          <div className="lb-badge">{p.badge ?? "🌱 Rising"}</div>
+                        </div>
+                      </div>
+                      <div className="lb-elo" style={{ color: eloColor, fontWeight: 800 }}>{elo}</div>
+                      <div className="lb-wins">{p.wins ?? 0}🏅</div>
+                      <div className="lb-rate">
+                        <div className="rate-bar"><div className="rate-fill" style={{ width:`${p.winRate ?? 0}%` }} /></div>
+                        <div className="rate-txt">{p.winRate ?? 0}%</div>
                       </div>
                     </div>
-                    <div className="lb-elo">{p.elo}</div>
-                    <div className="lb-wins">{p.wins}W</div>
-                    <div className="lb-rate">
-                      <div className="rate-bar"><div className="rate-fill" style={{ width:`${p.winRate}%` }} /></div>
-                      <div className="rate-txt">{p.winRate}%</div>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
 
             {/* ── UPCOMING SESSIONS ── */}
             <div className="section-header">
               <div className="section-title">📅 Upcoming Sessions</div>
-              <button className="btn btn-lime" style={{ fontSize:"0.8rem", padding:"8px 16px" }}>+ Schedule</button>
+              <a href="/sessions/new" className="btn btn-lime" style={{ fontSize:"0.8rem", padding:"8px 16px", textDecoration:"none" }}>+ Schedule</a>
             </div>
             {upcomingSessions === undefined ? (
               <div className="upcoming-grid">
@@ -651,23 +618,30 @@ export default function Tucheze254Home() {
                 ))}
               </div>
             ) : upcomingSessions.length === 0 ? (
-              <EmptyState icon="📅" title="No upcoming sessions" sub="Schedule your next game night!" />
+              <div style={{ marginBottom:50 }}>
+                <EmptyState icon="📅" title="No upcoming sessions" sub="Schedule your next game night!" />
+              </div>
             ) : (
-              <div className="upcoming-grid">
-                {upcomingSessions.map((s) => (
-                  <div key={s._id} className="session-card" style={{ background: s.bg }}>
-                    <div className="corner-emoji">{s.emoji}</div>
-                    <div className="session-type">{s.type === "upcoming" ? "Next Up" : "This Month"}</div>
-                    <div className="session-name">{s.name}</div>
-                    <div className="session-info">📍 {s.date} · {s.location}</div>
-                    <div className="session-avatars">
-                      {s.playerAvatars.slice(0,4).map((av, j) => (
-                        <div key={j} className="mini-avatar" style={{ background:"white", border:"2px solid #1a1a2e" }}>{av}</div>
-                      ))}
-                      <div className="rsvp-chip">{s.rsvpCount} going</div>
-                    </div>
-                  </div>
-                ))}
+              <div className="upcoming-grid" style={{ marginBottom:50 }}>
+                {upcomingSessions.map((s: any) => {
+                  const bg = ["#FFE13533","#4ECDC433","#FF9ECD33","#C8F13533"][
+                    Math.abs(s._id.charCodeAt(0)) % 4
+                  ];
+                  return (
+                    <a key={s._id} href="/sessions" className="session-card" style={{ background: bg, textDecoration:"none", color:"inherit" }}>
+                      <div className="corner-emoji">{s.games[0]?.emoji ?? "🎲"}</div>
+                      <div className="session-type">Upcoming</div>
+                      <div className="session-name">{s.name}</div>
+                      <div className="session-info">📍 {s.location} · {new Date(s.date).toLocaleDateString("en-KE",{day:"numeric",month:"short"})}</div>
+                      <div className="session-avatars">
+                        {s.players.slice(0,4).map((p: any, j: number) => (
+                          <div key={j} className="mini-avatar" style={{ background: p.color ?? "#4ECDC4" }}>{p.avatar ?? "🎲"}</div>
+                        ))}
+                        <div className="rsvp-chip">{s.players.length} going</div>
+                      </div>
+                    </a>
+                  );
+                })}
               </div>
             )}
 
@@ -678,47 +652,118 @@ export default function Tucheze254Home() {
               <div>
                 <div className="section-header">
                   <div className="section-title">🗳️ Tonight's Poll</div>
+                  {/* Start Poll button — shown when no active poll or poll expired */}
+                  {poll !== undefined && (!poll || pollExpired) && (
+                    <button
+                      className="btn btn-lime"
+                      style={{ fontSize:"0.8rem", padding:"8px 16px" }}
+                      disabled={startingPoll}
+                      onClick={handleStartPoll}
+                    >
+                      {startingPoll ? "Starting…" : "▶ Start Poll"}
+                    </button>
+                  )}
                 </div>
                 <div className="poll-card">
-                  <div className="poll-header">
-                    <div className="poll-title">🎲 What should we play?</div>
-                    <div className="poll-end">Closes in 2h</div>
-                  </div>
-                  <div className="poll-options">
-                    {pollOptions === undefined ? (
-                      Array.from({ length: 3 }).map((_, i) => (
-                        <div key={i} style={{ padding:"12px 0" }}>
-                          <div className="skeleton" style={{ width:"100%", height:44, borderRadius:14 }} />
-                        </div>
-                      ))
-                    ) : pollOptions.length === 0 ? (
-                      <EmptyState icon="🗳️" title="No active poll" sub="The host hasn't started a vote yet." />
-                    ) : (
-                      <>
-                        {pollOptions.map((o, i) => (
-                          <div key={i} className={`poll-option${votedFor===i?" voted":""}`} onClick={() => handleVote(i)}>
-                            <div className="poll-fill" style={{ width: votedFor!==null ? `${Math.round((o.votes/o.total)*100)}%` : "0%" }} />
-                            <div className="poll-option-inner">
-                              <div className="poll-game">
-                                <span>{o.emoji}</span>
-                                <div>
-                                  {o.game}
-                                  {votedFor===i && <div className="poll-votes">← your vote</div>}
-                                </div>
-                              </div>
-                              <div>
-                                {votedFor!==null && <div className="poll-pct">{Math.round((o.votes/o.total)*100)}%</div>}
-                                <div className="poll-votes">{o.votes} votes</div>
-                              </div>
-                            </div>
+                  {poll === undefined ? (
+                    // Loading
+                    <>
+                      <div className="poll-header">
+                        <div className="skeleton" style={{ width:180, height:18 }} />
+                        <div className="skeleton" style={{ width:70, height:14 }} />
+                      </div>
+                      <div className="poll-options">
+                        {[0,1,2].map(i => (
+                          <div key={i} style={{ padding:"12px 0" }}>
+                            <div className="skeleton" style={{ width:"100%", height:44, borderRadius:14 }} />
                           </div>
                         ))}
-                        {votedFor===null && (
+                      </div>
+                    </>
+                  ) : !poll ? (
+                    // No active poll
+                    <>
+                      <div className="poll-header">
+                        <div className="poll-title">🎲 What should we play?</div>
+                        <div className="poll-end">No active poll</div>
+                      </div>
+                      <div className="poll-options">
+                        <div style={{ textAlign:"center", padding:"32px 16px", opacity:0.45 }}>
+                          <div style={{ fontSize:"2.5rem", marginBottom:10 }}>🗳️</div>
+                          <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:"1.1rem", marginBottom:6 }}>No active poll</div>
+                          <div style={{ fontSize:"0.78rem", fontWeight:700 }}>Hit "▶ Start Poll" to kick one off — games are pulled straight from your library.</div>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    // Active poll
+                    <>
+                      <div className="poll-header" style={{ alignItems:"center" }}>
+                        <div className="poll-title">🎲 {poll.question}</div>
+                        {/* Live countdown */}
+                        <div className="poll-end" style={{
+                          display:"flex", alignItems:"center", gap:6,
+                          color: pollExpired ? "#FF6B6B" : secondsLeft < 60 ? "#FF6B6B" : "inherit",
+                          fontFamily: "'Fredoka One', cursive",
+                          fontSize: "0.9rem",
+                        }}>
+                          {pollExpired ? (
+                            <span>⏱ Closed</span>
+                          ) : (
+                            <>
+                              <span style={{
+                                display:"inline-block", minWidth:52,
+                                background: secondsLeft < 60 ? "#FF6B6B" : "#1a1a2e",
+                                color:"white", borderRadius:50, padding:"2px 10px",
+                                fontSize:"0.82rem", textAlign:"center",
+                                animation: secondsLeft < 30 ? "pulse 1s infinite" : "none",
+                              }}>
+                                {formatCountdown(secondsLeft)}
+                              </span>
+                              left
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <div className="poll-options">
+                        {poll.options.map((o: any, i: number) => {
+                          const hasVoted  = poll.myVoteIndex >= 0;
+                          const isMyVote  = poll.myVoteIndex === i;
+                          const pct       = o.total > 0 ? Math.round((o.votes / o.total) * 100) : 0;
+                          const canVote   = !pollExpired;
+                          return (
+                            <div key={i}
+                              className={`poll-option${isMyVote ? " voted" : ""}`}
+                              onClick={() => canVote && handleVote(i)}
+                              style={{ cursor: canVote ? "pointer" : "default", opacity: pollExpired && !isMyVote ? 0.6 : 1 }}>
+                              <div className="poll-fill" style={{ width: hasVoted || pollExpired ? `${pct}%` : "0%" }} />
+                              <div className="poll-option-inner">
+                                <div className="poll-game">
+                                  <span style={{ fontSize:"1.2rem" }}>{o.emoji}</span>
+                                  <div>
+                                    <div>{o.game}</div>
+                                    {isMyVote && !pollExpired && <div className="poll-votes">← your vote</div>}
+                                  </div>
+                                </div>
+                                <div style={{ textAlign:"right" }}>
+                                  {(hasVoted || pollExpired) && <div className="poll-pct">{pct}%</div>}
+                                  <div className="poll-votes">{o.votes} vote{o.votes !== 1 ? "s" : ""}</div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {poll.myVoteIndex < 0 && !pollExpired && (
                           <p style={{ fontSize:"0.75rem", fontWeight:700, opacity:0.4, textAlign:"center", paddingBottom:4 }}>Tap to vote 👆</p>
                         )}
-                      </>
-                    )}
-                  </div>
+                        {pollExpired && (
+                          <p style={{ fontSize:"0.75rem", fontWeight:700, color:"#FF6B6B", textAlign:"center", paddingBottom:4 }}>
+                            ⏱ Poll closed · {poll.options.reduce((max: any, o: any) => o.votes > (max?.votes ?? -1) ? o : max, null)?.game ?? "—"} wins!
+                          </p>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -760,7 +805,7 @@ export default function Tucheze254Home() {
             {/* ── RECENT SESSIONS ── */}
             <div className="section-header" style={{ marginTop:50 }}>
               <div className="section-title">🕹️ Recent Sessions</div>
-              <button className="btn btn-mint" style={{ fontSize:"0.8rem", padding:"8px 16px" }}>View All →</button>
+              <a href="/sessions" className="btn btn-mint" style={{ fontSize:"0.8rem", padding:"8px 16px", textDecoration:"none" }}>View All →</a>
             </div>
             {recentSessions === undefined ? (
               <div className="recent-list">
@@ -779,16 +824,25 @@ export default function Tucheze254Home() {
               <EmptyState icon="🕹️" title="No sessions yet" sub="Play your first game night to see it here!" />
             ) : (
               <div className="recent-list">
-                {recentSessions.map((r) => (
-                  <div key={r._id} className="recent-row">
-                    <div className="recent-game-icon" style={{ background: r.gameBg ?? "#FFE135" }}>{r.gameIcon ?? "🎮"}</div>
-                    <div className="recent-info">
-                      <div className="recent-name">{r.game}</div>
-                      <div className="recent-sub">{r.name} · {r.date}</div>
-                    </div>
-                    {r.winner && <div className="winner-tag">🏆 {r.winner}</div>}
-                  </div>
-                ))}
+                {recentSessions.map((s: any) => {
+                  const game   = s.games[0];
+                  const winner = s.teamWinner ? s.teamWinner.name : s.winner?.nickname;
+                  const date   = new Date(s.date).toLocaleDateString("en-KE",{day:"numeric",month:"short",year:"numeric"});
+                  return (
+                    <a key={s._id} href="/sessions" className="recent-row" style={{ textDecoration:"none", color:"inherit" }}>
+                      <div className="recent-game-icon" style={{ background:"#FFE13544" }}>
+                        {game?.emoji ?? "🎮"}
+                      </div>
+                      <div className="recent-info">
+                        <div className="recent-name">{s.name}</div>
+                        <div className="recent-sub">
+                          {game?.name ?? "Game night"} · {s.location} · {date} · {s.players.length} players
+                        </div>
+                      </div>
+                      {winner && <div className="winner-tag">🏆 {winner}</div>}
+                    </a>
+                  );
+                })}
               </div>
             )}
 

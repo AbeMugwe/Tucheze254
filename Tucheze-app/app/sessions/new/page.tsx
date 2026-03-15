@@ -1,7 +1,8 @@
 "use client";
+import Link from "next/link";
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -15,17 +16,30 @@ interface Player {
 }
 
 interface Game {
-  id: string;
+  id: string;         // local id for selection state (use convexId when saving)
+  convexId?: string;  // the real Convex _id from the games table
   name: string;
   emoji: string;
   minPlayers: number;
   maxPlayers: number;
   duration: string;
   tags: string[];
+  timesPlayed: number;
+  trending: boolean;
+  gameType?: "individual" | "team" | "both";
 }
 
-type SessionMode = "quick" | "tournament";
+type SessionMode   = "quick" | "tournament";
+type PlayFormat    = "individual" | "teams";
 type Step = 1 | 2 | 3 | 4;
+
+interface Team {
+  id: string;
+  name: string;
+  emoji: string;
+  color: string;
+  playerIds: string[];
+}
 
 interface SessionForm {
   name: string;
@@ -33,6 +47,9 @@ interface SessionForm {
   time: string;
   location: string;
   mode: SessionMode;
+  playFormat: PlayFormat;
+  teamCount: number;
+  teams: Team[];
   players: Player[];
   games: Game[];
   allowJoinLink: boolean;
@@ -41,27 +58,46 @@ interface SessionForm {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const AVAILABLE_PLAYERS: Player[] = [
-  { id: "1", name: "Wanjiku", emoji: "😎", color: "#FF6B6B" },
-  { id: "2", name: "Otieno",  emoji: "🤠", color: "#4ECDC4" },
-  { id: "3", name: "Amara",   emoji: "🦁", color: "#FFE135" },
-  { id: "4", name: "Njoro",   emoji: "🐉", color: "#FF9ECD" },
-  { id: "5", name: "Zawadi",  emoji: "🌟", color: "#C8F135" },
-  { id: "6", name: "Baraka",  emoji: "🦊", color: "#A8DAFF" },
-  { id: "7", name: "Zuri",    emoji: "🐬", color: "#FFB347" },
-  { id: "8", name: "Tendo",   emoji: "🦅", color: "#B5EAD7" },
-];
-
-const GAME_LIBRARY: Game[] = [
-  { id: "g1", name: "Exploding Kittens", emoji: "🐱", minPlayers: 2, maxPlayers: 5,  duration: "15–30 min", tags: ["party","quick","silly"] },
-  { id: "g2", name: "Catan",             emoji: "🏝️", minPlayers: 3, maxPlayers: 6,  duration: "60–120 min", tags: ["strategy","classic"] },
-  { id: "g3", name: "Codenames",         emoji: "🕵️", minPlayers: 4, maxPlayers: 8,  duration: "15–30 min", tags: ["party","teams","words"] },
-  { id: "g4", name: "UNO Extreme",       emoji: "🎴", minPlayers: 2, maxPlayers: 10, duration: "20–45 min", tags: ["party","quick","classic"] },
-  { id: "g5", name: "Jenga",             emoji: "🪵", minPlayers: 2, maxPlayers: 8,  duration: "10–20 min", tags: ["quick","physical","tense"] },
-  { id: "g6", name: "Pandemic",          emoji: "🦠", minPlayers: 2, maxPlayers: 4,  duration: "60–90 min", tags: ["co-op","strategy","serious"] },
-];
+// AVAILABLE_PLAYERS and GAME_LIBRARY are now loaded from Convex — no hardcoded data
 
 const STEPS = ["Details", "Players", "Games", "Review"] as const;
+
+// ─── Team generation data ─────────────────────────────────────────────────────
+
+const TEAM_NAMES = [
+  ["Team Mamba","Team Simba","Team Tembo","Team Chui","Team Mbuni"],
+  ["Noma Squad","Fiti Crew","Poa Gang","Sawa Posse","Bomba Bunch"],
+  ["Fire","Water","Earth","Wind","Thunder"],
+  ["Red Rockets","Blue Bolts","Gold Gladiators","Green Goblins","Purple Panthers"],
+  ["Team Nyota","Team Jua","Team Mwezi","Team Mvua","Team Upepo"],
+];
+
+const TEAM_EMOJIS  = ["🔥","💧","🌍","⚡","🎯","👑","🦁","🐉","🌟","💎"];
+const TEAM_COLORS  = ["#FF6B6B","#4ECDC4","#FFE135","#C8F135","#FF9ECD","#A8DAFF","#FFB347","#B5EAD7","#CF9FFF","#FFDAC1"];
+
+function generateTeams(count: number, existingTeams: Team[] = []): Team[] {
+  const nameSet = TEAM_NAMES[Math.floor(Math.random() * TEAM_NAMES.length)];
+  return Array.from({ length: count }, (_, i) => {
+    const existing = existingTeams[i];
+    return {
+      id:        existing?.id        ?? `team-${i}`,
+      name:      existing?.name      ?? nameSet[i] ?? `Team ${i + 1}`,
+      emoji:     existing?.emoji     ?? TEAM_EMOJIS[i % TEAM_EMOJIS.length],
+      color:     existing?.color     ?? TEAM_COLORS[i % TEAM_COLORS.length],
+      playerIds: existing?.playerIds ?? [],
+    };
+  });
+}
+
+function shufflePlayers(players: Player[], teams: Team[]): Team[] {
+  const shuffled = [...players].sort(() => Math.random() - 0.5);
+  return teams.map((t, i) => ({
+    ...t,
+    playerIds: shuffled
+      .filter((_, pi) => pi % teams.length === i)
+      .map((p) => p.id),
+  }));
+}
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
@@ -334,6 +370,89 @@ const css = `
   }
   .ns-game-row.selected .ns-game-check { background: #C8F135; border-color: #C8F135; color: #1a1a2e; }
 
+  /* ── GAME SKELETON ── */
+  .ns-skeleton-row {
+    display: flex; align-items: center; gap: 14px;
+    border: 3px solid #e8e8e8; border-radius: 18px;
+    padding: 14px 16px; background: white;
+  }
+  .ns-skel { background: linear-gradient(90deg,#f0f0f0 25%,#e8e8e8 50%,#f0f0f0 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 8px; }
+  @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+  .ns-skel-circle { border-radius: 50% !important; }
+
+  /* game trending badge */
+  .ns-game-trending {
+    display: inline-flex; align-items: center; gap: 3px;
+    background: #FF6B6B; color: white;
+    border: 1.5px solid #1a1a2e; border-radius: 50px;
+    font-size: 0.6rem; font-weight: 900; padding: 1px 7px;
+    margin-left: 6px; vertical-align: middle;
+  }
+  .ns-game-plays {
+    font-size: 0.65rem; font-weight: 800; opacity: 0.45; margin-top: 2px;
+  }
+
+  /* game search bar */
+  .ns-game-search-wrap { position: relative; margin-bottom: 14px; }
+  .ns-game-search-icon { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); pointer-events: none; font-size: 0.9rem; }
+  .ns-game-search {
+    width: 100%; font-family: 'Nunito', sans-serif; font-weight: 700; font-size: 0.88rem;
+    padding: 10px 12px 10px 38px; border: 2.5px solid #1a1a2e; border-radius: 12px;
+    background: white; color: #1a1a2e; outline: none;
+    box-shadow: 3px 3px 0 #1a1a2e; transition: box-shadow .15s;
+  }
+  .ns-game-search:focus { box-shadow: 5px 5px 0 #1a1a2e; }
+  .ns-game-search::placeholder { opacity: 0.4; }
+
+  /* quick-add inline form */
+  .ns-quick-add-toggle {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    width: 100%; padding: 10px; border: 2.5px dashed #1a1a2e; border-radius: 14px;
+    background: transparent; cursor: pointer; font-family: 'Nunito', sans-serif;
+    font-weight: 800; font-size: 0.82rem; color: #1a1a2e;
+    transition: background .15s; margin-top: 10px;
+  }
+  .ns-quick-add-toggle:hover { background: rgba(0,0,0,0.03); }
+  .ns-quick-add-form {
+    margin-top: 10px; border: 2.5px solid #1a1a2e; border-radius: 16px;
+    padding: 16px; background: #fffdf5; box-shadow: 3px 3px 0 #1a1a2e;
+  }
+  .ns-quick-add-title { font-family: 'Fredoka One', cursive; font-size: 1rem; margin-bottom: 12px; }
+  .ns-quick-add-row { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+  .ns-quick-emoji-btn {
+    width: 46px; height: 46px; border: 2.5px solid #1a1a2e; border-radius: 12px;
+    background: white; cursor: pointer; font-size: 1.4rem;
+    box-shadow: 2px 2px 0 #1a1a2e; flex-shrink: 0; transition: all .12s;
+  }
+  .ns-quick-emoji-btn:hover { transform: translate(-1px,-1px); box-shadow: 3px 3px 0 #1a1a2e; }
+  .ns-quick-name-input {
+    flex: 1; min-width: 120px; font-family: 'Nunito', sans-serif; font-weight: 700; font-size: 0.88rem;
+    padding: 10px 12px; border: 2.5px solid #1a1a2e; border-radius: 12px;
+    background: white; color: #1a1a2e; outline: none;
+    box-shadow: 2px 2px 0 #1a1a2e; transition: box-shadow .15s;
+  }
+  .ns-quick-name-input:focus { box-shadow: 4px 4px 0 #1a1a2e; }
+  .ns-quick-save-btn {
+    font-family: 'Fredoka One', cursive; font-size: 0.88rem;
+    padding: 10px 18px; border: 2.5px solid #1a1a2e; border-radius: 12px;
+    background: #C8F135; color: #1a1a2e; cursor: pointer;
+    box-shadow: 3px 3px 0 #1a1a2e; transition: all .12s; flex-shrink: 0;
+  }
+  .ns-quick-save-btn:hover:not(:disabled) { transform: translate(-1px,-1px); box-shadow: 4px 4px 0 #1a1a2e; }
+  .ns-quick-save-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .ns-quick-cancel-btn {
+    font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.78rem;
+    padding: 9px 14px; border: 2px solid #ccc; border-radius: 12px;
+    background: white; cursor: pointer; flex-shrink: 0;
+  }
+  .ns-quick-cancel-btn:hover { border-color: #FF6B6B; color: #FF6B6B; }
+
+  /* empty state inside card */
+  .ns-games-empty { text-align: center; padding: 36px 20px; }
+  .ns-games-empty-icon { font-size: 2.8rem; margin-bottom: 8px; }
+  .ns-games-empty-text { font-family: 'Fredoka One', cursive; font-size: 1.1rem; margin-bottom: 4px; }
+  .ns-games-empty-sub  { font-size: 0.78rem; font-weight: 700; opacity: 0.5; margin-bottom: 16px; }
+
   /* Review */
   .ns-review-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
   .ns-review-tile {
@@ -396,6 +515,118 @@ const css = `
   .ns-progress-fill {
     height: 100%; background: #FF6B6B; border-radius: 50px;
     transition: width .4s cubic-bezier(.34,1.56,.64,1);
+  }
+
+  /* ── FORMAT TOGGLE (Individual / Teams) ── */
+  .ns-format-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px; }
+  .ns-format-card {
+    border: 3px solid #1a1a2e; border-radius: 16px;
+    padding: 18px; cursor: pointer;
+    transition: transform .1s, box-shadow .1s, background .15s;
+    box-shadow: 3px 3px 0 #1a1a2e; background: white;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .ns-format-card:hover { transform: translate(-2px,-2px); box-shadow: 5px 5px 0 #1a1a2e; }
+  .ns-format-card.selected { background: #1a1a2e; color: white; }
+  .ns-format-icon { font-size: 1.8rem; flex-shrink: 0; }
+  .ns-format-name { font-family: 'Fredoka One', cursive; font-size: 1rem; margin-bottom: 2px; }
+  .ns-format-desc { font-size: 0.72rem; font-weight: 700; opacity: 0.6; line-height: 1.4; }
+
+  /* ── TEAM COUNT PICKER ── */
+  .ns-team-count-row { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+  .ns-count-btn {
+    width: 44px; height: 44px; border-radius: 50%;
+    border: 2.5px solid #1a1a2e; background: white;
+    font-family: 'Fredoka One', cursive; font-size: 1.1rem;
+    cursor: pointer; box-shadow: 3px 3px 0 #1a1a2e;
+    transition: all .12s; display: flex; align-items: center; justify-content: center;
+  }
+  .ns-count-btn:hover  { transform: translate(-1px,-1px); box-shadow: 4px 4px 0 #1a1a2e; }
+  .ns-count-btn.active { background: #1a1a2e; color: #FFE135; box-shadow: 2px 2px 0 rgba(0,0,0,0.3); }
+
+  /* ── TEAM BUILDER ── */
+  .ns-team-builder { display: flex; flex-direction: column; gap: 16px; }
+  .ns-team-block {
+    border: 3px solid #1a1a2e; border-radius: 18px;
+    overflow: hidden; box-shadow: 4px 4px 0 #1a1a2e;
+  }
+  .ns-team-head {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 16px; border-bottom: 2.5px solid #1a1a2e;
+  }
+  .ns-team-emoji { font-size: 1.4rem; }
+  .ns-team-name-input {
+    font-family: 'Fredoka One', cursive; font-size: 1rem;
+    border: none; outline: none; background: transparent;
+    flex: 1; color: inherit; min-width: 0;
+  }
+  .ns-team-count-chip {
+    font-size: 0.68rem; font-weight: 800; opacity: 0.55;
+    background: rgba(0,0,0,0.08); border-radius: 50px;
+    padding: 2px 10px; white-space: nowrap;
+  }
+  .ns-team-members {
+    padding: 12px 16px; background: white;
+    display: flex; flex-wrap: wrap; gap: 8px; min-height: 54px;
+  }
+  .ns-team-member-chip {
+    display: flex; align-items: center; gap: 6px;
+    border: 2px solid #1a1a2e; border-radius: 50px;
+    padding: 4px 10px 4px 6px;
+    font-weight: 800; font-size: 0.78rem;
+    cursor: pointer; transition: all .12s;
+    box-shadow: 2px 2px 0 #1a1a2e;
+  }
+  .ns-team-member-chip:hover { background: #fff0f0; border-color: #FF6B6B; }
+  .ns-team-member-avatar {
+    width: 22px; height: 22px; border-radius: 50%;
+    border: 1.5px solid #1a1a2e; display: flex;
+    align-items: center; justify-content: center; font-size: 0.75rem;
+  }
+  .ns-team-empty { font-size: 0.78rem; font-weight: 700; opacity: 0.35; padding: 4px 0; }
+
+  /* unassigned pool */
+  .ns-pool-label { font-size: 0.72rem; font-weight: 800; opacity: 0.45; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+  .ns-pool-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+  .ns-pool-chip {
+    display: flex; align-items: center; gap: 6px;
+    border: 2.5px solid #1a1a2e; border-radius: 50px;
+    padding: 5px 12px 5px 8px;
+    font-weight: 800; font-size: 0.8rem;
+    cursor: pointer; background: white;
+    box-shadow: 3px 3px 0 #1a1a2e; transition: all .12s;
+  }
+  .ns-pool-chip:hover { transform: translate(-1px,-1px); box-shadow: 4px 4px 0 #1a1a2e; }
+  .ns-pool-avatar {
+    width: 26px; height: 26px; border-radius: 50%;
+    border: 2px solid #1a1a2e; display: flex;
+    align-items: center; justify-content: center; font-size: 0.85rem;
+  }
+
+  /* randomize & action buttons */
+  .ns-team-actions { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+  .ns-action-btn {
+    font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.82rem;
+    padding: 9px 18px; border: 2.5px solid #1a1a2e; border-radius: 50px;
+    cursor: pointer; box-shadow: 3px 3px 0 #1a1a2e; background: white;
+    transition: all .12s; display: flex; align-items: center; gap: 6px;
+  }
+  .ns-action-btn:hover { transform: translate(-1px,-1px); box-shadow: 4px 4px 0 #1a1a2e; }
+  .ns-action-btn.accent { background: #FFE135; }
+  .ns-action-btn.navy   { background: #1a1a2e; color: white; }
+
+  /* team assignment dropdown hint */
+  .ns-assign-hint {
+    font-size: 0.75rem; font-weight: 700; opacity: 0.4;
+    margin-bottom: 12px; display: flex; align-items: center; gap: 6px;
+  }
+
+  /* pool player select dropdown */
+  .ns-assign-select {
+    font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.82rem;
+    padding: 7px 12px; border: 2px solid #1a1a2e; border-radius: 10px;
+    background: white; color: #1a1a2e; outline: none; cursor: pointer;
+    box-shadow: 2px 2px 0 #1a1a2e; appearance: none;
   }
 `;
 
@@ -483,7 +714,16 @@ function StepDetails({ form, setForm }: { form: SessionForm; setForm: React.Disp
   );
 }
 
-function StepPlayers({ form, setForm }: { form: SessionForm; setForm: React.Dispatch<React.SetStateAction<SessionForm>> }) {
+function StepPlayers({ form, setForm, availablePlayers, loadingPlayers }: { form: SessionForm; setForm: React.Dispatch<React.SetStateAction<SessionForm>>; availablePlayers: Player[]; loadingPlayers: boolean }) {
+  // ── Format select ──────────────────────────────────────────────────────────
+  const setFormat = (fmt: PlayFormat) => {
+    setForm(f => {
+      const teams = fmt === "teams" ? generateTeams(f.teamCount) : f.teams;
+      return { ...f, playFormat: fmt, teams };
+    });
+  };
+
+  // ── Individual player toggle ───────────────────────────────────────────────
   const togglePlayer = useCallback((p: Player) => {
     setForm(f => {
       const exists = f.players.find(x => x.id === p.id);
@@ -494,45 +734,295 @@ function StepPlayers({ form, setForm }: { form: SessionForm; setForm: React.Disp
 
   const isSelected = (id: string) => form.players.some(p => p.id === id);
 
+  // ── Team count ────────────────────────────────────────────────────────────
+  const setTeamCount = (n: number) => {
+    setForm(f => {
+      const newTeams = generateTeams(n, f.teams);
+      return { ...f, teamCount: n, teams: newTeams };
+    });
+  };
+
+  // ── Assign player to a team ───────────────────────────────────────────────
+  const assignToTeam = (playerId: string, teamId: string) => {
+    setForm(f => ({
+      ...f,
+      teams: f.teams.map(t => {
+        if (t.id === teamId)   return { ...t, playerIds: [...t.playerIds.filter(id => id !== playerId), playerId] };
+        return { ...t, playerIds: t.playerIds.filter(id => id !== playerId) };
+      }),
+    }));
+  };
+
+  // Remove from a team → back to pool
+  const removeFromTeam = (playerId: string) => {
+    setForm(f => ({
+      ...f,
+      teams: f.teams.map(t => ({ ...t, playerIds: t.playerIds.filter(id => id !== playerId) })),
+    }));
+  };
+
+  // ── Randomize ────────────────────────────────────────────────────────────
+  const randomize = () => {
+    setForm(f => ({ ...f, teams: shufflePlayers(f.players, f.teams) }));
+  };
+
+  // ── Re-roll team names ────────────────────────────────────────────────────
+  const rerollNames = () => {
+    setForm(f => ({
+      ...f,
+      teams: generateTeams(f.teamCount).map((newT, i) => ({
+        ...f.teams[i],
+        name:  newT.name,
+        emoji: newT.emoji,
+      })),
+    }));
+  };
+
+  // ── Rename a team ─────────────────────────────────────────────────────────
+  const renameTeam = (teamId: string, name: string) => {
+    setForm(f => ({ ...f, teams: f.teams.map(t => t.id === teamId ? { ...t, name } : t) }));
+  };
+
+  // ── Unassigned players ───────────────────────────────────────────────────
+  const assignedIds = form.teams.flatMap(t => t.playerIds);
+  const unassigned  = form.players.filter(p => !assignedIds.includes(p.id));
+
   return (
-    <div className="ns-card">
-      <div className="ns-card-title">👥 Who's Playing?</div>
-      <div className="ns-selected-count">
-        {form.players.length} player{form.players.length !== 1 ? "s" : ""} selected
-        {form.players.length > 0 && " · "}
-        {form.players.length > 0 && <span style={{ color: "#FF6B6B" }}>Tap to deselect</span>}
-      </div>
-      <div className="ns-player-grid">
-        {AVAILABLE_PLAYERS.map((p, i) => {
-          const selected = isSelected(p.id);
-          const isHost = i === 0;
-          return (
-            <div key={p.id}
-              className={`ns-player-tile${selected ? " selected" : ""}${isHost ? " host-tile" : ""}`}
-              style={selected ? { background: p.color, borderColor: "#1a1a2e" } : {}}
-              onClick={() => togglePlayer(p)}>
-              {isHost && <div className="ns-host-crown">👑</div>}
-              {selected && <div className="ns-ptile-check">✓</div>}
-              <div className="ns-ptile-emoji">{p.emoji}</div>
-              <div className="ns-ptile-name">{p.name}</div>
+    <>
+      {/* ── Play Format ── */}
+      <div className="ns-card">
+        <div className="ns-card-title">⚔️ Play Format</div>
+        <div className="ns-format-row">
+          {(["individual", "teams"] as PlayFormat[]).map(fmt => (
+            <div key={fmt}
+              className={`ns-format-card${form.playFormat === fmt ? " selected" : ""}`}
+              onClick={() => setFormat(fmt)}>
+              <div className="ns-format-icon">{fmt === "individual" ? "🧍" : "🫂"}</div>
+              <div>
+                <div className="ns-format-name">{fmt === "individual" ? "Individual" : "Teams"}</div>
+                <div className="ns-format-desc">
+                  {fmt === "individual"
+                    ? "Every player for themselves. May the best one win."
+                    : "Group players into teams. Score together, win together."}
+                </div>
+              </div>
             </div>
-          );
-        })}
-        <button className="ns-guest-btn">
-          <div className="ns-guest-icon">➕</div>
-          Add Guest
-        </button>
+          ))}
+        </div>
       </div>
-      {form.allowJoinLink && (
-        <div style={{ marginTop: 16, padding: "12px 16px", background: "#f0fff4", border: "2px solid #1a1a2e", borderRadius: 14, fontSize: "0.8rem", fontWeight: 700 }}>
-          🔗 Others can also join via your invite link after you create the session.
+
+      {/* ── Player pool ── */}
+      <div className="ns-card">
+        <div className="ns-card-title">👥 Who's Playing?</div>
+        <div className="ns-selected-count">
+          {form.players.length} player{form.players.length !== 1 ? "s" : ""} selected
+          {form.players.length > 0 && <span style={{ color: "#FF6B6B" }}> · Tap to deselect</span>}
+        </div>
+        {loadingPlayers ? (
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {[0,1,2,3,4,5].map(i => (
+              <div key={i} style={{ width: "calc(25% - 9px)", height: 90, borderRadius: 16, background: "linear-gradient(90deg,#f0f0f0 25%,#e8e8e8 50%,#f0f0f0 75%)", backgroundSize: "200% 100%", animation: "shimmer 1.4s infinite", border: "2.5px solid #e0e0e0" }} />
+            ))}
+          </div>
+        ) : availablePlayers.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "24px 16px", opacity: 0.45 }}>
+            <div style={{ fontSize: "2rem", marginBottom: 8 }}>👤</div>
+            <div style={{ fontWeight: 800, fontSize: "0.88rem" }}>No players found</div>
+            <div style={{ fontSize: "0.78rem", fontWeight: 700, marginTop: 4 }}>Ask your crew to sign up first — they'll appear here automatically.</div>
+          </div>
+        ) : (
+          <div className="ns-player-grid">
+            {availablePlayers.map((p, i) => {
+              const selected = isSelected(p.id);
+              const isHost   = i === 0;
+              return (
+                <div key={p.id}
+                  className={`ns-player-tile${selected ? " selected" : ""}${isHost ? " host-tile" : ""}`}
+                  style={selected ? { background: p.color, borderColor: "#1a1a2e" } : {}}
+                  onClick={() => {
+                    togglePlayer(p);
+                    if (selected && form.playFormat === "teams") removeFromTeam(p.id);
+                  }}>
+                  {isHost && <div className="ns-host-crown">👑</div>}
+                  {selected && <div className="ns-ptile-check">✓</div>}
+                  <div className="ns-ptile-emoji">{p.emoji}</div>
+                  <div className="ns-ptile-name">{p.name}</div>
+                </div>
+              );
+            })}
+            <button className="ns-guest-btn">
+              <div className="ns-guest-icon">➕</div>
+              Add Guest
+            </button>
+          </div>
+        )}
+        {form.allowJoinLink && (
+          <div style={{ marginTop: 16, padding: "12px 16px", background: "#f0fff4", border: "2px solid #1a1a2e", borderRadius: 14, fontSize: "0.8rem", fontWeight: 700 }}>
+            🔗 Others can also join via your invite link after you create the session.
+          </div>
+        )}
+      </div>
+
+      {/* ── Teams section (only visible when teams format selected) ── */}
+      {form.playFormat === "teams" && (
+        <div className="ns-card">
+          <div className="ns-card-title">🫂 Set Up Teams</div>
+
+          {/* Team count */}
+          <div style={{ marginBottom: 8 }}>
+            <div className="ns-pool-label">Number of Teams</div>
+            <div className="ns-team-count-row">
+              {[2, 3, 4, 5].map(n => (
+                <button
+                  key={n}
+                  className={`ns-count-btn${form.teamCount === n ? " active" : ""}`}
+                  onClick={() => setTeamCount(n)}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Action buttons */}
+          <div className="ns-team-actions">
+            <button className="ns-action-btn accent" onClick={randomize}
+              disabled={form.players.length === 0}>
+              🎲 Randomize
+            </button>
+            <button className="ns-action-btn" onClick={rerollNames}>
+              🔄 New Names
+            </button>
+          </div>
+
+          {/* Unassigned pool */}
+          {form.players.length > 0 && (
+            <>
+              <div className="ns-pool-label">
+                Unassigned Players ({unassigned.length})
+              </div>
+              {unassigned.length === 0 ? (
+                <div style={{ fontSize: "0.8rem", fontWeight: 700, opacity: 0.4, marginBottom: 16 }}>
+                  ✅ All players assigned!
+                </div>
+              ) : (
+                <div className="ns-pool-grid">
+                  {unassigned.map(p => (
+                    <div key={p.id} style={{ position: "relative", display: "inline-block" }}>
+                      <div className="ns-pool-chip">
+                        <div className="ns-pool-avatar" style={{ background: p.color }}>{p.emoji}</div>
+                        <span>{p.name}</span>
+                        <span style={{ fontSize: "0.65rem", opacity: 0.5, marginLeft: 2 }}>→</span>
+                        <select
+                          className="ns-assign-select"
+                          value=""
+                          onChange={e => { if (e.target.value) assignToTeam(p.id, e.target.value); }}
+                          onClick={e => e.stopPropagation()}
+                        >
+                          <option value="">pick team</option>
+                          {form.teams.map(t => (
+                            <option key={t.id} value={t.id}>{t.emoji} {t.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {form.players.length === 0 && (
+            <div style={{ fontSize: "0.82rem", fontWeight: 700, opacity: 0.4, marginBottom: 16 }}>
+              ↑ Select players above first, then assign them to teams.
+            </div>
+          )}
+
+          {/* Team blocks */}
+          <div className="ns-team-builder">
+            {form.teams.map((team, ti) => {
+              const members = form.players.filter(p => team.playerIds.includes(p.id));
+              return (
+                <div key={team.id} className="ns-team-block">
+                  <div className="ns-team-head" style={{ background: team.color }}>
+                    <span className="ns-team-emoji">{team.emoji}</span>
+                    <input
+                      className="ns-team-name-input"
+                      value={team.name}
+                      onChange={e => renameTeam(team.id, e.target.value)}
+                      maxLength={24}
+                    />
+                    <span className="ns-team-count-chip">
+                      {members.length} player{members.length !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                  <div className="ns-team-members">
+                    {members.length === 0
+                      ? <span className="ns-team-empty">Drop players here or use Randomize</span>
+                      : members.map(p => (
+                          <div key={p.id} className="ns-team-member-chip"
+                            style={{ background: p.color + "33" }}
+                            onClick={() => removeFromTeam(p.id)}
+                            title="Click to remove from team">
+                            <div className="ns-team-member-avatar" style={{ background: p.color }}>{p.emoji}</div>
+                            {p.name}
+                            <span style={{ opacity: 0.4, fontSize: "0.7rem" }}>✕</span>
+                          </div>
+                        ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
+// Emoji picker pool for quick-add
+const QUICK_EMOJIS = ["🎲","🃏","♟️","🎯","🧩","🎮","🏆","🎳","🎪","🎭","🚀","🧸","🦁","🐉","⚡","🌟","🔥","💎","🎵","🏝️"];
+
 function StepGames({ form, setForm }: { form: SessionForm; setForm: React.Dispatch<React.SetStateAction<SessionForm>> }) {
+  const rawGames  = useQuery(api.games.list);
+  const addGame   = useMutation(api.games.add);
+  const loading   = rawGames === undefined;
+
+  const [search,       setSearch]       = useState("");
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [qaName,       setQaName]       = useState("");
+  const [qaEmoji,      setQaEmoji]      = useState("🎲");
+  const [qaEmojiOpen,  setQaEmojiOpen]  = useState(false);
+  const [qaSaving,     setQaSaving]     = useState(false);
+
+  // Map Convex game docs to the local Game interface
+  const gameLibrary: Game[] = (rawGames ?? []).map((g: any) => ({
+    id:          g._id,
+    convexId:    g._id,
+    name:        g.name,
+    emoji:       g.emoji,
+    minPlayers:  parseInt(g.players?.split(/[–\-]/)[0] ?? "1") || 1,
+    maxPlayers:  parseInt(g.players?.split(/[–\-]/)[1] ?? "99") || 99,
+    duration:    g.duration ?? "—",
+    tags:        g.tags ?? [],
+    timesPlayed: g.timesPlayed ?? 0,
+    trending:    g.trending ?? false,
+    gameType:    g.gameType ?? "both",
+  }));
+
+  // Sort: trending first → most played → alphabetical
+  const sorted = [...gameLibrary].sort((a, b) => {
+    if (b.trending !== a.trending) return b.trending ? 1 : -1;
+    if (b.timesPlayed !== a.timesPlayed) return b.timesPlayed - a.timesPlayed;
+    return a.name.localeCompare(b.name);
+  });
+
+  // Filter by search
+  const visible = search.trim()
+    ? sorted.filter(g => g.name.toLowerCase().includes(search.toLowerCase()) ||
+        g.tags.some((t: string) => t.toLowerCase().includes(search.toLowerCase())))
+    : sorted;
+
   const toggleGame = useCallback((g: Game) => {
     setForm(f => {
       const exists = f.games.find(x => x.id === g.id);
@@ -543,31 +1033,195 @@ function StepGames({ form, setForm }: { form: SessionForm; setForm: React.Dispat
 
   const isSelected = (id: string) => form.games.some(g => g.id === id);
 
+  // Save a quick-add game to Convex then auto-select it
+  const handleQuickSave = async () => {
+    if (!qaName.trim()) return;
+    setQaSaving(true);
+    try {
+      const id = await addGame({
+        name:        qaName.trim(),
+        emoji:       qaEmoji,
+        category:    "Other",
+        players:     "2–8",
+        duration:    "—",
+        difficulty:  1,
+        tags:        [],
+        rating:      0,
+        color:       "#4ECDC4",
+        description: "",
+      });
+      // Auto-select the newly added game
+      const newGame: Game = {
+        id:          id as string,
+        convexId:    id as string,
+        name:        qaName.trim(),
+        emoji:       qaEmoji,
+        minPlayers:  2,
+        maxPlayers:  8,
+        duration:    "—",
+        tags:        [],
+        timesPlayed: 0,
+        trending:    false,
+      };
+      setForm(f => ({ ...f, games: [...f.games, newGame] }));
+      setQaName(""); setQaEmoji("🎲"); setShowQuickAdd(false);
+    } catch (e) {
+      console.error("Failed to add game:", e);
+    } finally {
+      setQaSaving(false);
+    }
+  };
+
   return (
     <div className="ns-card">
       <div className="ns-card-title">🎲 Pick Your Games</div>
       <div className="ns-selected-count">
-        {form.games.length} game{form.games.length !== 1 ? "s" : ""} selected
+        {form.games.length > 0
+          ? `${form.games.length} game${form.games.length !== 1 ? "s" : ""} selected · ${form.games.map(g => g.emoji).join(" ")}`
+          : "No games selected yet"}
       </div>
-      <div className="ns-game-grid">
-        {GAME_LIBRARY.map(g => (
-          <div key={g.id} className={`ns-game-row${isSelected(g.id) ? " selected" : ""}`}
-            onClick={() => toggleGame(g)}>
-            <div className="ns-game-icon">{g.emoji}</div>
-            <div className="ns-game-info">
-              <div className="ns-game-name">{g.name}</div>
-              <div className="ns-game-meta">
-                <span>👥 {g.minPlayers}–{g.maxPlayers}</span>
-                <span>⏱ {g.duration}</span>
-              </div>
-              <div className="ns-game-tags">
-                {g.tags.map(t => <span key={t} className="ns-tag">{t}</span>)}
+
+      {/* Search bar — only show when there are games to search */}
+      {!loading && sorted.length > 3 && (
+        <div className="ns-game-search-wrap">
+          <span className="ns-game-search-icon">🔍</span>
+          <input
+            className="ns-game-search"
+            placeholder="Search games…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+      )}
+
+      {loading ? (
+        <div className="ns-game-grid">
+          {[0,1,2,3].map(i => (
+            <div key={i} className="ns-skeleton-row">
+              <div className="ns-skel ns-skel-circle" style={{ width:46, height:46, flexShrink:0 }} />
+              <div style={{ flex:1 }}>
+                <div className="ns-skel" style={{ width:"60%", height:14, marginBottom:8 }} />
+                <div className="ns-skel" style={{ width:"40%", height:11, marginBottom:6 }} />
+                <div style={{ display:"flex", gap:6 }}>
+                  <div className="ns-skel" style={{ width:44, height:20, borderRadius:50 }} />
+                  <div className="ns-skel" style={{ width:44, height:20, borderRadius:50 }} />
+                </div>
               </div>
             </div>
-            <div className="ns-game-check">{isSelected(g.id) ? "✓" : ""}</div>
+          ))}
+        </div>
+
+      ) : sorted.length === 0 ? (
+        // Truly empty library
+        <div className="ns-games-empty">
+          <div className="ns-games-empty-icon">🎲</div>
+          <div className="ns-games-empty-text">No games in your library yet</div>
+          <div className="ns-games-empty-sub">Add a quick one below, or build your full library on the Games page.</div>
+          <div style={{ display:"flex", gap:10, justifyContent:"center", flexWrap:"wrap" }}>
+            <Link href="/games" target="_blank"
+              style={{ fontFamily:"'Fredoka One',cursive", fontSize:"0.88rem", padding:"9px 20px", border:"2.5px solid #1a1a2e", borderRadius:50, background:"#FFE135", color:"#1a1a2e", textDecoration:"none", boxShadow:"3px 3px 0 #1a1a2e", display:"inline-flex", alignItems:"center", gap:6 }}>
+              📚 Open Games Library
+            </Link>
           </div>
-        ))}
-      </div>
+        </div>
+
+      ) : visible.length === 0 ? (
+        // Search returned nothing
+        <div className="ns-games-empty">
+          <div className="ns-games-empty-icon">🔍</div>
+          <div className="ns-games-empty-text">No matches</div>
+          <div className="ns-games-empty-sub">Try a different search term.</div>
+        </div>
+
+      ) : (
+        <div className="ns-game-grid">
+          {visible.map((g: any) => (
+            <div key={g.id} className={`ns-game-row${isSelected(g.id) ? " selected" : ""}`}
+              onClick={() => toggleGame(g)}>
+              <div className="ns-game-icon">{g.emoji}</div>
+              <div className="ns-game-info">
+                <div className="ns-game-name">
+                  {g.name}
+                  {g.trending && <span className="ns-game-trending">🔥 Trending</span>}
+                </div>
+                <div className="ns-game-meta">
+                  <span>👥 {g.minPlayers}–{g.maxPlayers}</span>
+                  <span>⏱ {g.duration}</span>
+                  {g.gameType && g.gameType !== "both" && (
+                    <span style={{
+                      fontSize: "0.62rem", fontWeight: 800,
+                      background: g.gameType === "team" ? "#4ECDC4" : "#FFE135",
+                      color: "#1a1a2e", borderRadius: 50, padding: "1px 7px",
+                      border: "1.5px solid currentColor",
+                    }}>
+                      {g.gameType === "team" ? "🫂 Team" : "🧍 Individual"}
+                    </span>
+                  )}
+                </div>
+                {g.timesPlayed > 0 && (
+                  <div className="ns-game-plays">Played {g.timesPlayed}× with the crew</div>
+                )}
+                {g.tags.length > 0 && (
+                  <div className="ns-game-tags">
+                    {g.tags.map((t: string) => <span key={t} className="ns-tag">{t}</span>)}
+                  </div>
+                )}
+              </div>
+              <div className="ns-game-check">{isSelected(g.id) ? "✓" : ""}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Quick-add — always visible at the bottom */}
+      {!loading && (
+        showQuickAdd ? (
+          <div className="ns-quick-add-form">
+            <div className="ns-quick-add-title">➕ Quick Add Game</div>
+            <div className="ns-quick-add-row">
+              {/* Emoji picker */}
+              <div style={{ position:"relative" }}>
+                <button className="ns-quick-emoji-btn" onClick={() => setQaEmojiOpen(o => !o)} type="button">
+                  {qaEmoji}
+                </button>
+                {qaEmojiOpen && (
+                  <div style={{ position:"absolute", top:"110%", left:0, zIndex:50, background:"white", border:"2.5px solid #1a1a2e", borderRadius:14, padding:10, display:"flex", flexWrap:"wrap", gap:6, width:220, boxShadow:"4px 4px 0 #1a1a2e" }}>
+                    {QUICK_EMOJIS.map(e => (
+                      <button key={e} onClick={() => { setQaEmoji(e); setQaEmojiOpen(false); }}
+                        style={{ background:"none", border:"none", cursor:"pointer", fontSize:"1.3rem", padding:"2px 4px", borderRadius:8, transition:"background .1s" }}
+                        onMouseEnter={ev => (ev.currentTarget.style.background="#f0f0f0")}
+                        onMouseLeave={ev => (ev.currentTarget.style.background="none")}>
+                        {e}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <input
+                className="ns-quick-name-input"
+                placeholder="Game name…"
+                value={qaName}
+                onChange={e => setQaName(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && handleQuickSave()}
+                autoFocus
+              />
+              <button className="ns-quick-save-btn" disabled={!qaName.trim() || qaSaving} onClick={handleQuickSave}>
+                {qaSaving ? "Saving…" : "Save & Select"}
+              </button>
+              <button className="ns-quick-cancel-btn" onClick={() => { setShowQuickAdd(false); setQaName(""); setQaEmoji("🎲"); }}>
+                Cancel
+              </button>
+            </div>
+            <div style={{ fontSize:"0.7rem", fontWeight:700, opacity:0.4, marginTop:8 }}>
+              You can add full details (players, duration, tags) from the Games library later.
+            </div>
+          </div>
+        ) : (
+          <button className="ns-quick-add-toggle" onClick={() => setShowQuickAdd(true)}>
+            ＋ Add a game that's not in the library
+          </button>
+        )
+      )}
     </div>
   );
 }
@@ -588,6 +1242,7 @@ function StepReview({ form, copied, onCopy }: { form: SessionForm; copied: boole
               ["Time", form.time || "—"],
               ["Location", form.location || "—"],
               ["Mode", form.mode === "quick" ? "⚡ Quick" : "🏆 Tournament"],
+              ["Format", form.playFormat === "individual" ? "🧍 Individual" : `🫂 Teams (${form.teamCount})`],
             ].map(([k, v]) => (
               <div key={k} className="ns-review-row">
                 <span className="ns-review-key">{k}</span>
@@ -597,16 +1252,42 @@ function StepReview({ form, copied, onCopy }: { form: SessionForm; copied: boole
           </div>
         </div>
         <div className="ns-review-tile">
-          <div className="ns-review-tile-head" style={{ background: "#4ECDC4" }}>👥 Players ({form.players.length})</div>
+          <div className="ns-review-tile-head" style={{ background: "#4ECDC4" }}>
+            {form.playFormat === "teams" ? `🫂 Teams (${form.teams.length})` : `👥 Players (${form.players.length})`}
+          </div>
           <div className="ns-review-tile-body">
-            {form.players.length === 0
-              ? <span style={{ opacity: 0.4, fontSize: "0.82rem" }}>No players selected</span>
-              : form.players.map(p => (
-                <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                  <div style={{ width: 28, height: 28, borderRadius: "50%", background: p.color, border: "2px solid #1a1a2e", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.85rem" }}>{p.emoji}</div>
-                  <span style={{ fontWeight: 800, fontSize: "0.85rem" }}>{p.name}</span>
-                </div>
-              ))}
+            {form.playFormat === "individual" ? (
+              form.players.length === 0
+                ? <span style={{ opacity: 0.4, fontSize: "0.82rem" }}>No players selected</span>
+                : form.players.map(p => (
+                    <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                      <div style={{ width: 28, height: 28, borderRadius: "50%", background: p.color, border: "2px solid #1a1a2e", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.85rem" }}>{p.emoji}</div>
+                      <span style={{ fontWeight: 800, fontSize: "0.85rem" }}>{p.name}</span>
+                    </div>
+                  ))
+            ) : (
+              form.teams.map(t => {
+                const members = form.players.filter(p => t.playerIds.includes(p.id));
+                return (
+                  <div key={t.id} style={{ marginBottom: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                      <div style={{ width: 22, height: 22, borderRadius: "50%", background: t.color, border: "2px solid #1a1a2e", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.75rem" }}>{t.emoji}</div>
+                      <span style={{ fontFamily: "'Fredoka One', cursive", fontSize: "0.9rem" }}>{t.name}</span>
+                      <span style={{ fontSize: "0.68rem", fontWeight: 800, opacity: 0.45 }}>({members.length})</span>
+                    </div>
+                    <div style={{ display: "flex", gap: 4, flexWrap: "wrap", paddingLeft: 28 }}>
+                      {members.length === 0
+                        ? <span style={{ fontSize: "0.72rem", opacity: 0.4 }}>No members</span>
+                        : members.map(p => (
+                            <span key={p.id} style={{ fontSize: "0.72rem", fontWeight: 800, background: p.color + "44", border: "1.5px solid #1a1a2e", borderRadius: 50, padding: "1px 8px" }}>
+                              {p.emoji} {p.name}
+                            </span>
+                          ))}
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
         <div className="ns-review-tile" style={{ gridColumn: "1 / -1" }}>
@@ -655,13 +1336,25 @@ export default function NewSession() {
   const [step, setStep] = useState<Step>(1);
   const [copied, setCopied] = useState(false);
   const [launching, setLaunching] = useState(false);
-  const createSession = useMutation(api.sessions.create);
+  const createSession  = useMutation(api.sessions.create);
+  const rawUsers       = useQuery(api.users.list);
+  const loadingPlayers = rawUsers === undefined;
+  // Map Convex users to the Player shape used throughout NewSession
+  const availablePlayers: Player[] = (rawUsers ?? []).map((u) => ({
+    id:    u._id,
+    name:  u.nickname  ?? "Unknown",
+    emoji: u.avatar    ?? "🎲",
+    color: u.color     ?? "#4ECDC4",
+  }));
   const [form, setForm] = useState<SessionForm>({
     name: "",
     date: "",
     time: "18:00",
     location: "",
     mode: "quick",
+    playFormat: "individual",
+    teamCount: 2,
+    teams: generateTeams(2),
     players: [],
     games: [],
     allowJoinLink: true,
@@ -695,7 +1388,7 @@ export default function NewSession() {
             Tucheze254
           </div>
           <button className="ns-back" onClick={() => step > 1 ? setStep(s => (s - 1) as Step) : undefined}>
-            ← {step === 1 ? "Home" : "Back"}
+            ← {step === 1 ? <a href="/">Home</a> : "Back"}
           </button>
         </nav>
 
@@ -788,7 +1481,7 @@ export default function NewSession() {
             </div>
 
             {step === 1 && <StepDetails form={form} setForm={setForm} />}
-            {step === 2 && <StepPlayers form={form} setForm={setForm} />}
+            {step === 2 && <StepPlayers form={form} setForm={setForm} availablePlayers={availablePlayers} loadingPlayers={loadingPlayers} />}
             {step === 3 && <StepGames form={form} setForm={setForm} />}
             {step === 4 && <StepReview form={form} copied={copied} onCopy={handleCopy} />}
 
@@ -808,6 +1501,22 @@ export default function NewSession() {
                     onClick={async () => {
                       setLaunching(true);
                       try {
+                        const playerIds = form.players.map((p) => p.id);
+
+                        // Guard: Convex IDs are long strings, never short numbers.
+                        // If we see a short numeric ID it means stale/cached code is running.
+                        const badId = playerIds.find((id) => /^\d+$/.test(id));
+                        if (badId) {
+                          console.error(
+                            `[Tucheze254] Bad player ID detected: "${badId}". ` +
+                            "This means the old hardcoded AVAILABLE_PLAYERS list is still being used. " +
+                            "Hard-refresh the page (Ctrl+Shift+R / Cmd+Shift+R) and try again."
+                          );
+                          alert("Player data looks stale. Please hard-refresh the page (Ctrl+Shift+R) and try again.");
+                          setLaunching(false);
+                          return;
+                        }
+
                         // 1. Save session to Convex and get back its _id
                         const convexId = await createSession({
                           name:      form.name || "Game Night",
@@ -815,17 +1524,36 @@ export default function NewSession() {
                           date:      form.date
                                        ? new Date(`${form.date}T${form.time || "18:00"}`).toISOString()
                                        : new Date().toISOString(),
-                          games:     form.games.map((g) => ({ name: g.name, emoji: g.emoji })),
-                          playerIds: form.players.map((p) => p.id as any),
+                          games:     form.games.map((g) => ({
+                            name:   g.name,
+                            emoji:  g.emoji,
+                            gameId: (g.convexId ?? undefined) as any,
+                          })),
+                          playerIds: playerIds as any,
                         });
 
                         // 2. Write session data + convexId to sessionStorage for LiveSession
                         const sessionData = {
                           convexId,
-                          name:     form.name || "Game Night",
-                          location: form.location || "TBD",
-                          players:  form.players,
-                          games:    form.games.map((g) => ({ name: g.name, emoji: g.emoji })),
+                          name:       form.name || "Game Night",
+                          location:   form.location || "TBD",
+                          players:    form.players,
+                          games:      form.games.map((g) => ({
+                            name:     g.name,
+                            emoji:    g.emoji,
+                            gameId:   g.convexId,
+                            gameType: g.gameType ?? "both",
+                          })),
+                          playFormat: form.playFormat,
+                          teams: form.playFormat === "teams"
+                            ? form.teams.map((t) => ({
+                                id:        t.id,
+                                name:      t.name,
+                                emoji:     t.emoji,
+                                color:     t.color,
+                                playerIds: t.playerIds,
+                              }))
+                            : undefined,
                         };
                         sessionStorage.setItem("tucheze_live_session", JSON.stringify(sessionData));
 
