@@ -321,6 +321,12 @@ export default function SignIn() {
   const router     = useRouter();
   const { signIn } = useAuthActions();
 
+  // Pick up ?redirect= param so join links work after auth
+  const searchParams = typeof window !== "undefined"
+    ? new URLSearchParams(window.location.search)
+    : null;
+  const redirectTo = searchParams?.get("redirect") ?? "/";
+
   const [form, setForm]           = useState<SignInForm>({ email: "", password: "" });
   const [errors, setErrors]       = useState<FormError[]>([]);
   const [loading, setLoading]     = useState<boolean>(false);
@@ -347,9 +353,9 @@ export default function SignIn() {
       });
       setLoading(false);
       setSuccess(true);
-      // Redirect home after brief success screen
+      // Redirect to original destination (e.g. /join/T254-XXXXX) or home
       await new Promise((r) => setTimeout(r, 1200));
-      router.push("/");
+      router.push(redirectTo);
     } catch (err: unknown) {
       setLoading(false);
       const message = err instanceof Error ? err.message : "Something went wrong.";
@@ -403,7 +409,6 @@ export default function SignIn() {
               </div>
             ))}
           </div>
-          
         </div>
 
         {/* ── RIGHT PANEL ── */}

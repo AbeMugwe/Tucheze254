@@ -93,10 +93,13 @@ export default defineSchema({
     totalRounds:     v.optional(v.number()),
     durationMinutes: v.optional(v.number()),
     createdBy:       v.id("users"),
+    inviteCode:      v.optional(v.string()),   // short shareable code e.g. "T254-A3K9X"
+    allowJoin:       v.optional(v.boolean()),  // whether the invite link is active
   })
-    .index("by_created_by", ["createdBy"])
-    .index("by_status",     ["status"])
-    .index("by_date",       ["date"]),
+    .index("by_created_by",  ["createdBy"])
+    .index("by_status",      ["status"])
+    .index("by_date",        ["date"])
+    .index("by_invite_code", ["inviteCode"]),
   polls: defineTable({
     question:  v.string(),
     createdBy: v.id("users"),

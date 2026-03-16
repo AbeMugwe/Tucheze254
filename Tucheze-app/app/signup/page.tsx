@@ -425,6 +425,11 @@ export default function SignUp() {
   const createProfile = useMutation(api.users.createProfile);
   const currentUser   = useQuery(api.users.currentUser);
 
+  // Pick up ?redirect= param so join links work after signup
+  const redirectTo = typeof window !== "undefined"
+    ? (new URLSearchParams(window.location.search).get("redirect") ?? "/")
+    : "/";
+
   const [form, setForm] = useState<SignUpForm>({
     nickname: "", email: "", password: "", confirmPassword: "", avatar: "", playStyle: [],
   });
@@ -461,7 +466,7 @@ export default function SignUp() {
       .then(() => {
         setLoading(false);
         setSuccess(true);
-        setTimeout(() => router.push("/"), 1800);
+        setTimeout(() => router.push(redirectTo), 1800);
       })
       .catch((err: unknown) => {
         setLoading(false);
@@ -610,7 +615,9 @@ export default function SignUp() {
                 <div style={{ marginTop: 16 }}>
                   <div className="spinner" style={{ margin: "0 auto", borderColor: "rgba(78,205,196,0.3)", borderTopColor: "#4ECDC4" }} />
                 </div>
-                <div className="su-success-redirect">Taking you to the home page…</div>
+                <div className="su-success-redirect">
+                  {redirectTo.startsWith("/join/") ? "Taking you back to the session…" : "Taking you to the home page…"}
+                </div>
               </div>
 
             ) : (

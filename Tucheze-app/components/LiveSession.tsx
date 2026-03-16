@@ -36,6 +36,7 @@ interface SessionData {
   games: Game[];
   playFormat?: "individual" | "teams";
   teams?: Team[];
+  inviteCode?: string;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -160,19 +161,19 @@ const css = `
   .ls-round-history { margin-bottom:16px; display:flex; gap:7px; flex-wrap:wrap; }
   .ls-round-chip { display:flex; align-items:center; gap:5px; border:2.5px solid var(--navy); border-radius:50px; padding:4px 11px; background:white; box-shadow:2px 2px 0 var(--navy); font-size:0.72rem; font-weight:800; }
   .ls-round-chip-winner { display:inline-flex; align-items:center; gap:3px; background:var(--yellow); border-radius:50px; padding:1px 7px; font-size:0.65rem; font-weight:900; border:1.5px solid var(--navy); }
-  .ls-panel-title { font-family:'Fredoka One',cursive; font-size:1.25rem; margin-bottom:11px; }
-  .ls-panel-card { border:var(--border); border-radius:18px; box-shadow:var(--shadow-lg); background:white; overflow:hidden; }
-  .ls-panel-head { background:var(--navy); padding:11px 16px; font-family:'Fredoka One',cursive; font-size:0.92rem; color:white; display:flex; align-items:center; gap:7px; }
-  .ls-multi-hint { font-size:0.65rem; font-weight:800; color:rgba(255,255,255,0.4); margin-left:auto; }
-  .ls-selected-chip { margin:9px 12px 0; padding:5px 11px; background:var(--yellow); border:2px solid var(--navy); border-radius:50px; font-size:0.72rem; font-weight:800; box-shadow:2px 2px 0 var(--navy); display:flex; align-items:center; justify-content:space-between; }
+  .ls-panel-title { font-family:'Fredoka One',cursive; font-size:1.1rem; margin-bottom:8px; }
+  .ls-panel-card { border:var(--border); border-radius:16px; box-shadow:var(--shadow-lg); background:white; overflow:hidden; }
+  .ls-panel-head { background:var(--navy); padding:9px 14px; font-family:'Fredoka One',cursive; font-size:0.88rem; color:white; display:flex; align-items:center; gap:7px; }
+  .ls-multi-hint { font-size:0.62rem; font-weight:800; color:rgba(255,255,255,0.4); margin-left:auto; }
+  .ls-selected-chip { margin:7px 10px 0; padding:4px 10px; background:var(--yellow); border:2px solid var(--navy); border-radius:50px; font-size:0.7rem; font-weight:800; box-shadow:2px 2px 0 var(--navy); display:flex; align-items:center; justify-content:space-between; }
   .ls-deselect-all { background:none; border:none; cursor:pointer; font-size:0.72rem; font-weight:800; color:var(--navy); opacity:0.6; }
   .ls-deselect-all:hover { opacity:1; }
-  .ls-player-select-list { padding:11px; display:flex; flex-direction:column; gap:6px; max-height:280px; overflow-y:auto; }
-  .ls-select-btn { display:flex; align-items:center; gap:9px; width:100%; padding:8px 11px; border:2.5px solid var(--navy); border-radius:12px; background:white; cursor:pointer; transition:all .12s; font-family:'Nunito',sans-serif; box-shadow:3px 3px 0 var(--navy); }
-  .ls-select-btn:hover { transform:translate(-1px,-1px); box-shadow:4px 4px 0 var(--navy); }
+  .ls-player-select-list { padding:8px; display:flex; flex-direction:column; gap:5px; max-height:180px; overflow-y:auto; }
+  .ls-select-btn { display:flex; align-items:center; gap:8px; width:100%; padding:6px 10px; border:2px solid var(--navy); border-radius:10px; background:white; cursor:pointer; transition:all .12s; font-family:'Nunito',sans-serif; box-shadow:2px 2px 0 var(--navy); }
+  .ls-select-btn:hover { transform:translate(-1px,-1px); box-shadow:3px 3px 0 var(--navy); }
   .ls-select-btn.selected { background:var(--navy); color:white; box-shadow:2px 2px 0 rgba(0,0,0,0.3); }
-  .ls-team-select-btn { display:flex; flex-direction:column; width:100%; padding:9px 11px; border:2.5px solid var(--navy); border-radius:12px; background:white; cursor:pointer; transition:all .12s; font-family:'Nunito',sans-serif; box-shadow:3px 3px 0 var(--navy); text-align:left; gap:5px; }
-  .ls-team-select-btn:hover { transform:translate(-1px,-1px); box-shadow:4px 4px 0 var(--navy); }
+  .ls-team-select-btn { display:flex; flex-direction:column; width:100%; padding:7px 10px; border:2px solid var(--navy); border-radius:10px; background:white; cursor:pointer; transition:all .12s; font-family:'Nunito',sans-serif; box-shadow:2px 2px 0 var(--navy); text-align:left; gap:4px; }
+  .ls-team-select-btn:hover { transform:translate(-1px,-1px); box-shadow:3px 3px 0 var(--navy); }
   .ls-team-select-btn.selected { background:var(--navy); color:white; box-shadow:2px 2px 0 rgba(0,0,0,0.3); }
   .ls-team-select-top { display:flex; align-items:center; gap:9px; }
   .ls-team-select-avatar { width:26px; height:26px; border-radius:50%; border:2px solid currentColor; display:flex; align-items:center; justify-content:center; font-size:0.9rem; flex-shrink:0; }
@@ -183,23 +184,68 @@ const css = `
   .ls-select-btn-avatar { width:26px; height:26px; border-radius:50%; border:2px solid currentColor; display:flex; align-items:center; justify-content:center; font-size:0.9rem; flex-shrink:0; }
   .ls-select-btn-name { font-weight:800; font-size:0.83rem; flex:1; text-align:left; }
   .ls-select-btn-score { font-family:'Fredoka One',cursive; font-size:0.88rem; }
-  .ls-points-section { padding:11px; border-top:2.5px solid #eee; }
-  .ls-points-label { font-size:0.68rem; font-weight:800; opacity:0.42; text-transform:uppercase; letter-spacing:1px; margin-bottom:7px; }
-  .ls-quick-pts { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:9px; }
-  .ls-quick-btn { font-family:'Fredoka One',cursive; font-size:0.88rem; padding:7px 12px; border:2.5px solid var(--navy); border-radius:11px; background:white; cursor:pointer; box-shadow:3px 3px 0 var(--navy); transition:all .12s; }
-  .ls-quick-btn:hover:not(:disabled) { transform:translate(-1px,-1px); box-shadow:4px 4px 0 var(--navy); background:var(--yellow); }
+  .ls-points-section { padding:8px 10px; border-top:2px solid #eee; }
+  .ls-points-label { font-size:0.65rem; font-weight:800; opacity:0.42; text-transform:uppercase; letter-spacing:1px; margin-bottom:5px; }
+  .ls-quick-pts { display:flex; gap:5px; flex-wrap:wrap; margin-bottom:7px; }
+  .ls-quick-btn { font-family:'Fredoka One',cursive; font-size:0.82rem; padding:6px 10px; border:2px solid var(--navy); border-radius:9px; background:white; cursor:pointer; box-shadow:2px 2px 0 var(--navy); transition:all .12s; }
+  .ls-quick-btn:hover:not(:disabled) { transform:translate(-1px,-1px); box-shadow:3px 3px 0 var(--navy); background:var(--yellow); }
   .ls-quick-btn:disabled { opacity:0.35; cursor:not-allowed; }
-  .ls-custom-row { display:flex; gap:7px; align-items:center; }
-  .ls-custom-input { flex:1; font-family:'Fredoka One',cursive; font-size:0.98rem; padding:8px 11px; border:2.5px solid var(--navy); border-radius:11px; background:white; color:var(--navy); outline:none; box-shadow:3px 3px 0 var(--navy); transition:box-shadow .15s; text-align:center; }
-  .ls-custom-input:focus { box-shadow:5px 5px 0 var(--navy); }
-  .ls-add-btn { font-family:'Fredoka One',cursive; font-size:0.92rem; padding:8px 16px; border:var(--border); border-radius:11px; background:var(--coral); color:white; cursor:pointer; box-shadow:var(--shadow); transition:all .12s; }
+  .ls-custom-row { display:flex; gap:6px; align-items:center; }
+  .ls-custom-input { flex:1; font-family:'Fredoka One',cursive; font-size:0.92rem; padding:6px 10px; border:2px solid var(--navy); border-radius:9px; background:white; color:var(--navy); outline:none; box-shadow:2px 2px 0 var(--navy); transition:box-shadow .15s; text-align:center; }
+  .ls-custom-input:focus { box-shadow:4px 4px 0 var(--navy); }
+  .ls-add-btn { font-family:'Fredoka One',cursive; font-size:0.85rem; padding:6px 13px; border:var(--border); border-radius:9px; background:var(--coral); color:white; cursor:pointer; box-shadow:var(--shadow); transition:all .12s; }
   .ls-add-btn:hover:not(:disabled) { transform:translate(-2px,-2px); box-shadow:var(--shadow-lg); }
   .ls-add-btn:disabled { opacity:0.4; cursor:not-allowed; }
-  .ls-deduct-row { display:flex; gap:7px; margin-top:7px; }
-  .ls-deduct-btn { font-family:'Nunito',sans-serif; font-weight:800; font-size:0.73rem; padding:6px 12px; border:2px solid var(--navy); border-radius:9px; background:white; cursor:pointer; box-shadow:2px 2px 0 var(--navy); transition:all .12s; flex:1; }
+  .ls-deduct-row { display:flex; gap:6px; margin-top:5px; }
+  .ls-deduct-btn { font-family:'Nunito',sans-serif; font-weight:800; font-size:0.7rem; padding:5px 10px; border:2px solid var(--navy); border-radius:8px; background:white; cursor:pointer; box-shadow:2px 2px 0 var(--navy); transition:all .12s; flex:1; }
   .ls-deduct-btn:hover:not(:disabled) { background:#fff0f0; border-color:var(--coral); color:var(--coral); transform:translate(-1px,-1px); }
   .ls-deduct-btn:disabled { opacity:0.35; cursor:not-allowed; }
-  .ls-toast-wrap { position:fixed; bottom:22px; left:50%; transform:translateX(-50%); z-index:999; pointer-events:none; display:flex; flex-direction:column-reverse; gap:7px; align-items:center; }
+  .ls-invite-strip {
+    display:flex; align-items:center; gap:8px; margin-top:8px;
+    background:rgba(255,255,255,0.07); border:1.5px solid rgba(255,255,255,0.15);
+    border-radius:50px; padding:5px 5px 5px 12px;
+    width:fit-content; position:relative; z-index:1;
+  }
+  .ls-invite-label { font-size:0.65rem; font-weight:800; color:rgba(255,255,255,0.4); text-transform:uppercase; letter-spacing:1px; }
+  .ls-invite-code  { font-family:'Fredoka One',cursive; font-size:0.82rem; color:var(--yellow); letter-spacing:1.5px; }
+  .ls-invite-copy  {
+    font-family:'Nunito',sans-serif; font-weight:800; font-size:0.68rem;
+    padding:4px 11px; border:1.5px solid rgba(255,255,255,0.25); border-radius:50px;
+    background:rgba(255,255,255,0.1); color:white; cursor:pointer;
+    transition:background .15s; white-space:nowrap;
+  }
+    .ls-toast-wrap {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 700;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  pointer-events: none;
+}
+
+.ls-toast {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  max-width: calc(100vw - 32px);
+  font-family: 'Fredoka One', cursive;
+  font-size: 0.97rem;
+  background: var(--navy);
+  color: white;
+  border: 2.5px solid var(--navy);
+  border-radius: 50px;
+  padding: 9px 22px;
+  box-shadow: var(--shadow-lg);
+  animation: toastIn .35s cubic-bezier(0.34,1.56,0.64,1) forwards, toastOut .3s ease 2.5s forwards;
+  white-space: nowrap;
+}
+  .ls-invite-copy:hover  { background:rgba(255,255,255,0.2); }
+  .ls-invite-copy.copied { background:var(--lime); color:var(--navy); border-color:var(--lime); }
   .ls-toast { font-family:'Fredoka One',cursive; font-size:0.97rem; background:var(--navy); color:white; border:2.5px solid var(--navy); border-radius:50px; padding:9px 22px; box-shadow:var(--shadow-lg); animation: toastIn .35s cubic-bezier(0.34,1.56,0.64,1) forwards, toastOut .3s ease 2.5s forwards; white-space:nowrap; }
   @keyframes toastIn  { from{opacity:0;transform:translateY(16px) scale(0.9)} to{opacity:1;transform:translateY(0) scale(1)} }
   @keyframes toastOut { from{opacity:1} to{opacity:0;transform:translateY(-8px)} }
@@ -604,9 +650,34 @@ export default function LiveSession({ sessionData }: { sessionData?: SessionData
 
   // ── Per-round score sheets ────────────────────────────────────────────────
   const [currentRound, setCurrentRound] = useState(0);
-  const [roundScores, setRoundScores]   = useState<PlayerScore[][]>(() =>
-    session.games.map(() => freshScores(session.players))
-  );
+ const [roundScores, setRoundScores] = useState<PlayerScore[][]>(() =>
+  session.games.map(() => freshScores(session.players))
+);
+
+function mergePlayersIntoScores(scores: PlayerScore[], players: Player[]): PlayerScore[] {
+  const existing = new Map(scores.map((p) => [p.id, p]));
+  const merged = players.map((player) => {
+    const prev = existing.get(player.id);
+    return prev ?? {
+      ...player,
+      score: 0,
+      prevRank: 0,
+      rank: 0,
+      delta: null,
+    };
+  });
+
+  return assignRanks(merged);
+}
+
+useEffect(() => {
+  setRoundScores((prev) => {
+    return session.games.map((_, roundIndex) => {
+      const existingRound = prev[roundIndex] ?? [];
+      return mergePlayersIntoScores(existingRound, session.players);
+    });
+  });
+}, [session.players, session.games]);
   const [roundResults, setRoundResults] = useState<RoundResult[]>([]);
   const [pendingResult, setPendingResult] = useState<RoundResult | null>(null);
 
@@ -644,10 +715,11 @@ export default function LiveSession({ sessionData }: { sessionData?: SessionData
   })();
   const totalTeamScores = hasTeams ? buildTeamScores(session.teams!, totalScores, []) : [];
 
-  const [toasts, setToasts]       = useState<Toast[]>([]);
-  const [showEnd, setShowEnd]     = useState(false);
+  const [toasts, setToasts]           = useState<Toast[]>([]);
+  const [showEnd, setShowEnd]         = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [saving, setSaving]       = useState(false);
+  const [saving, setSaving]           = useState(false);
+  const [inviteCopied, setInviteCopied] = useState(false);
   const toastId   = useRef(0);
   const lastToast = useRef("");
 
@@ -814,6 +886,26 @@ export default function LiveSession({ sessionData }: { sessionData?: SessionData
                 </span>
               )}
             </div>
+
+            {/* Invite link strip — only shown when session has a code */}
+            {session.inviteCode && (
+              <div className="ls-invite-strip">
+                <div>
+                  <div className="ls-invite-label">Invite Link</div>
+                  <div className="ls-invite-code">plotnplay.vercel.app/join/{session.inviteCode}</div>
+                </div>
+                <button
+                  className={`ls-invite-copy${inviteCopied ? " copied" : ""}`}
+                  onClick={() => {
+                    navigator.clipboard.writeText(`https://plotnplay.vercel.app/join/${session.inviteCode}`).catch(() => {});
+                    setInviteCopied(true);
+                    setTimeout(() => setInviteCopied(false), 2000);
+                  }}
+                >
+                  {inviteCopied ? "✅ Copied!" : "📋 Copy"}
+                </button>
+              </div>
+            )}
             {isMultiGame && (
               <div className="ls-round-pill">
                 <span className="ls-round-pill-game">{curGame.emoji} {curGame.name}</span>

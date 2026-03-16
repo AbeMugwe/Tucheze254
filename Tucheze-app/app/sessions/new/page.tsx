@@ -1226,9 +1226,12 @@ function StepGames({ form, setForm }: { form: SessionForm; setForm: React.Dispat
   );
 }
 
-function StepReview({ form, copied, onCopy }: { form: SessionForm; copied: boolean; onCopy: () => void }) {
-  const joinCode = "T254-" + Math.random().toString(36).substring(2, 7).toUpperCase();
-  const joinUrl = `tucheze254.app/join/${joinCode}`;
+function StepReview({ form, copied, onCopy, inviteCode }: {
+  form: SessionForm; copied: boolean; onCopy: () => void; inviteCode: string | null;
+}) {
+  const joinUrl = inviteCode
+    ? `https://plotnplay.vercel.app/join/${inviteCode}`
+    : null;
 
   return (
     <>
@@ -1312,17 +1315,33 @@ function StepReview({ form, copied, onCopy }: { form: SessionForm; copied: boole
           <p style={{ fontSize: "0.82rem", fontWeight: 700, opacity: 0.65, marginBottom: 14, lineHeight: 1.6 }}>
             Share this link via WhatsApp or any app. When someone opens it, they'll see the session details and tap <strong>"I'm In 🙌"</strong> to add themselves as a player automatically.
           </p>
-          <div className="ns-share-box">
-            <span className="ns-share-link">{joinUrl}</span>
-            <button className="ns-copy-btn" onClick={onCopy}>
-              {copied ? "✅ Copied!" : "📋 Copy"}
-            </button>
-          </div>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            {["📱 WhatsApp","💬 Telegram","🔵 Facebook"].map(s => (
-              <button key={s} style={{ fontFamily: "'Nunito', sans-serif", fontWeight: 800, fontSize: "0.78rem", padding: "7px 16px", border: "2px solid #1a1a2e", borderRadius: 50, cursor: "pointer", background: "white", boxShadow: "2px 2px 0 #1a1a2e" }}>{s}</button>
-            ))}
-          </div>
+          {joinUrl ? (
+            // Real code available — session has been created
+            <>
+              <div className="ns-share-box">
+                <span className="ns-share-link">{joinUrl}</span>
+                <button className="ns-copy-btn" onClick={onCopy}>
+                  {copied ? "✅ Copied!" : "📋 Copy"}
+                </button>
+              </div>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                {[
+                  { label: "📱 WhatsApp", href: `https://wa.me/?text=${encodeURIComponent(`Join my game night! 🎲\n${joinUrl}`)}` },
+                  { label: "💬 Telegram", href: `https://t.me/share/url?url=${encodeURIComponent(joinUrl)}&text=${encodeURIComponent("Join my game night! 🎲")}` },
+                ].map(({ label, href }) => (
+                  <a key={label} href={href} target="_blank" rel="noopener noreferrer"
+                    style={{ fontFamily: "'Nunito', sans-serif", fontWeight: 800, fontSize: "0.78rem", padding: "7px 16px", border: "2px solid #1a1a2e", borderRadius: 50, cursor: "pointer", background: "white", boxShadow: "2px 2px 0 #1a1a2e", textDecoration: "none", color: "#1a1a2e" }}>
+                    {label}
+                  </a>
+                ))}
+              </div>
+            </>
+          ) : (
+            // No code yet — session not launched yet
+            <div style={{ padding: "14px 18px", background: "#f9f9f9", border: "2px dashed #ccc", borderRadius: 14, fontSize: "0.82rem", fontWeight: 700, color: "#999", textAlign: "center" }}>
+              🚀 Launch the session to generate your invite link
+            </div>
+          )}
         </div>
       )}
     </>
@@ -1336,6 +1355,7 @@ export default function NewSession() {
   const [step, setStep] = useState<Step>(1);
   const [copied, setCopied] = useState(false);
   const [launching, setLaunching] = useState(false);
+  const [inviteCode, setInviteCode] = useState<string | null>(null);
   const createSession  = useMutation(api.sessions.create);
   const rawUsers       = useQuery(api.users.list);
   const loadingPlayers = rawUsers === undefined;
@@ -1364,6 +1384,10 @@ export default function NewSession() {
   const progress = ((step - 1) / 3) * 100;
 
   const handleCopy = () => {
+    const url = inviteCode
+      ? `https://plotnplay.vercel.app/join/${inviteCode}`
+      : "";
+    if (url) navigator.clipboard.writeText(url).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -1388,7 +1412,7 @@ export default function NewSession() {
             Tucheze254
           </div>
           <button className="ns-back" onClick={() => step > 1 ? setStep(s => (s - 1) as Step) : undefined}>
-            ← {step === 1 ? <a href="/">Home</a> : "Back"}
+            ← {step === 1 ? "Home" : "Back"}
           </button>
         </nav>
 
@@ -1483,7 +1507,7 @@ export default function NewSession() {
             {step === 1 && <StepDetails form={form} setForm={setForm} />}
             {step === 2 && <StepPlayers form={form} setForm={setForm} availablePlayers={availablePlayers} loadingPlayers={loadingPlayers} />}
             {step === 3 && <StepGames form={form} setForm={setForm} />}
-            {step === 4 && <StepReview form={form} copied={copied} onCopy={handleCopy} />}
+            {step === 4 && <StepReview form={form} copied={copied} onCopy={handleCopy} inviteCode={inviteCode} />}
 
             <div className="ns-footer">
               <button className="ns-btn ns-btn-ghost"
@@ -1517,8 +1541,8 @@ export default function NewSession() {
                           return;
                         }
 
-                        // 1. Save session to Convex and get back its _id
-                        const convexId = await createSession({
+                        // 1. Save session to Convex and get back its _id + inviteCode
+                        const { id: convexId, inviteCode: code } = await createSession({
                           name:      form.name || "Game Night",
                           location:  form.location || "TBD",
                           date:      form.date
@@ -1530,11 +1554,16 @@ export default function NewSession() {
                             gameId: (g.convexId ?? undefined) as any,
                           })),
                           playerIds: playerIds as any,
+                          allowJoin: form.allowJoinLink,
                         });
+
+                        // Save the real invite code so the review step can display it
+                        setInviteCode(code);
 
                         // 2. Write session data + convexId to sessionStorage for LiveSession
                         const sessionData = {
                           convexId,
+                          inviteCode: code,
                           name:       form.name || "Game Night",
                           location:   form.location || "TBD",
                           players:    form.players,

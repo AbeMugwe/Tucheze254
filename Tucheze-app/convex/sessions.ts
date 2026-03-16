@@ -178,22 +178,32 @@ export const live = query({
   },
 });
 
+// ─── Invite code helper ───────────────────────────────────────────────────────
+
+function generateInviteCode(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no O/0 or I/1 — easy to read
+  let code = "T254-";
+  for (let i = 0; i < 5; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return code;
+}
+
 // ─── Mutations ────────────────────────────────────────────────────────────────
 
 // Create a new session (from NewSession wizard)
 export const create = mutation({
   args: {
-    name:     v.string(),
-    location: v.string(),
-    date:     v.string(),
+    name:      v.string(),
+    location:  v.string(),
+    date:      v.string(),
     games: v.array(v.object({
       name:   v.string(),
       emoji:  v.string(),
       gameId: v.optional(v.id("games")),
     })),
-    playerIds: v.array(v.id("users")),
-    // gameId is optional — populated when games are selected from the library
-    // (allows precise incrementPlays; falls back to name-match if absent)
+    playerIds:  v.array(v.id("users")),
+    allowJoin:  v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -214,15 +224,75 @@ export const create = mutation({
       })
     );
 
-    return await ctx.db.insert("sessions", {
-      name:     args.name,
-      location: args.location,
-      date:     args.date,
-      status:   "upcoming",
-      games:    args.games,
+    // Generate a unique invite code
+    const inviteCode = generateInviteCode();
+
+    const sessionId = await ctx.db.insert("sessions", {
+      name:       args.name,
+      location:   args.location,
+      date:       args.date,
+      status:     "upcoming",
+      games:      args.games,
       players,
-      createdBy: userId as any,
+      createdBy:  userId as any,
+      inviteCode,
+      allowJoin:  args.allowJoin ?? true,
     });
+
+    return { id: sessionId, inviteCode };
+  },
+});
+
+// Look up a session by its invite code — public (no auth required for preview)
+export const getByInviteCode = query({
+  args: { code: v.string() },
+  handler: async (ctx, { code }) => {
+    const session = await ctx.db
+      .query("sessions")
+      .withIndex("by_invite_code", (q) => q.eq("inviteCode", code))
+      .first();
+    return session ?? null;
+  },
+});
+
+// Join a session via invite code
+export const joinByCode = mutation({
+  args: { code: v.string() },
+  handler: async (ctx, { code }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Must be signed in to join.");
+
+    const session = await ctx.db
+      .query("sessions")
+      .withIndex("by_invite_code", (q) => q.eq("inviteCode", code))
+      .first();
+
+    if (!session)               throw new Error("Invalid invite code.");
+    if (!session.allowJoin)     throw new Error("This session is not accepting new players.");
+    if (session.status === "completed") throw new Error("This session has already ended.");
+
+    // Already a player?
+    const alreadyIn = session.players.some((p: any) => p.userId === userId);
+    if (alreadyIn) return { status: "already_joined", sessionId: session._id };
+
+    // Load their profile for the snapshot
+    const user = await ctx.db.get(userId as any) as any;
+    if (!user) throw new Error("User profile not found.");
+
+    const newPlayer = {
+      userId:   userId as any,
+      nickname: user.nickname ?? "Player",
+      avatar:   user.avatar   ?? "🎲",
+      color:    user.color    ?? "#4ECDC4",
+      score:    0,
+      rank:     session.players.length + 1,
+    };
+
+    await ctx.db.patch(session._id, {
+      players: [...session.players, newPlayer],
+    });
+
+    return { status: "joined", sessionId: session._id };
   },
 });
 
@@ -288,7 +358,7 @@ export const complete = mutation({
       status: "completed",
       players: ranked.map((p, i) => ({ ...p, rank: i + 1 })),
       winner,
-      teamWinner: winningTeam,
+      teamWinner:winningTeam,
       totalRounds,
       durationMinutes,
       roundWinners,
