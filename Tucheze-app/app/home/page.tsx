@@ -329,13 +329,104 @@ const styles = `
   .auth-gate-btns  { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
 
   @media (max-width: 768px) {
-    .hero           { grid-template-columns: 1fr; }
-    .stats-grid     { grid-template-columns: repeat(2,1fr); }
-    .upcoming-grid  { grid-template-columns: 1fr; }
-    .lb-row         { grid-template-columns: 36px 1fr 70px 60px; }
-    .lb-rate        { display: none; }
+    .page { padding: 0 14px 80px; }
+
+    /* ── HERO ── */
+    .hero { grid-template-columns: 1fr; gap: 24px; padding: 32px 0 32px; }
+    .hero-left h1 { font-size: 2.4rem; }
+    .hero-left p  { font-size: 0.9rem; margin-bottom: 20px; }
+    .hero-right   { margin-top: 0; }
+    .hero-card    { padding: 20px; border-radius: 18px; }
+    .session-title { font-size: 1.3rem; margin-bottom: 12px; }
+    .session-meta  { gap: 8px; margin-bottom: 14px; }
+    .meta-chip     { font-size: 0.7rem; padding: 3px 10px; }
+    .sticker       { display: none; }
+    .hero-actions { gap: 8px; }
+    .btn          { font-size: 0.85rem; padding: 10px 18px; }
+
+    /* ── STATS ── */
+    .stats-grid { grid-template-columns: repeat(2,1fr); gap: 10px; margin-bottom: 32px; }
+    .stat-card  { padding: 16px 14px; border-radius: 16px; }
+    .stat-icon  { font-size: 1.4rem; margin-bottom: 6px; }
+    .stat-num   { font-size: 1.8rem; }
+    .stat-label { font-size: 0.72rem; }
+
+    /* ── SECTION HEADERS ── */
+    .section-header  { margin-top: 36px; margin-bottom: 14px; flex-wrap: wrap; gap: 8px; }
+    .section-title   { font-size: 1.3rem; }
+
+    /* ── LEADERBOARD ── */
+    .leaderboard-card { border-radius: 18px; margin-bottom: 36px; }
+    .lb-header  { padding: 12px 16px; }
+    .lb-title   { font-size: 1rem; }
+    .lb-row {
+      grid-template-columns: 32px 1fr 58px 48px;
+      gap: 8px; padding: 11px 14px;
+    }
+    .lb-rate  { display: none; }
+    .lb-elo   { font-size: 0.9rem; }
+    .lb-wins  { font-size: 0.82rem; }
+    .lb-name  { font-size: 0.82rem; }
+    .lb-badge { display: none; }
+    .lb-avatar { width: 30px; height: 30px; font-size: 0.9rem; }
+
+    /* ── UPCOMING SESSIONS ── */
+    .upcoming-grid { grid-template-columns: 1fr; gap: 12px; }
+    .session-card  { padding: 18px 16px; border-radius: 16px; }
+    .session-name  { font-size: 1.1rem; }
+
+    /* ── POLL + ACTIVITY ── */
+    .poll-card { border-radius: 18px; }
+    .poll-header { padding: 14px 18px; flex-wrap: wrap; gap: 8px; }
+    .poll-title  { font-size: 1rem; }
+    .poll-options { padding: 12px 14px; gap: 8px; }
+    .poll-option  { padding: 10px 12px; }
+    .poll-game    { font-size: 0.82rem; }
+
+    /* ── RECENT SESSIONS ── */
+    .recent-list { gap: 8px; }
+    .recent-row  { padding: 12px 14px; gap: 12px; border-radius: 14px; }
+    .recent-game-icon { width: 40px; height: 40px; font-size: 1.2rem; border-radius: 11px; }
+    .recent-name { font-size: 0.88rem; }
+    .recent-sub  { font-size: 0.7rem; }
+    .winner-tag  { font-size: 0.7rem; padding: 3px 10px; }
+
+    /* ── ACTIVITY + POLL GRID → STACK ── */
+    .poll-activity-grid { grid-template-columns: 1fr !important; gap: 0 !important; }
+
+    /* ── ACTIVITY ── */
+    .activity-item { padding: 10px 12px; gap: 10px; }
+    .activity-icon { width: 30px; height: 30px; font-size: 0.85rem; }
+    .activity-text { font-size: 0.78rem; }
+    .activity-time { font-size: 0.65rem; }
+
+    /* ── AUTH GATE ── */
+    .auth-gate { padding: 40px 20px; margin: 24px 0; border-radius: 18px; }
+    .auth-gate-icon  { font-size: 3rem; }
+    .auth-gate-title { font-size: 1.6rem; }
+    .auth-gate-btns  { flex-direction: column; align-items: center; }
+
+    /* ── CTA BANNER ── */
+    .cta-banner { padding: 28px 20px; border-radius: 18px; }
+    .cta-banner h2 { font-size: 1.6rem; }
+    .cta-banner p  { font-size: 0.85rem; }
+
+    /* ── BOTTOM NAV ── */
+    .bottom-hint { gap: 16px; padding-top: 16px; overflow-x: auto; }
+    .hint-item   { font-size: 0.65rem; }
+    .hint-icon   { font-size: 1.2rem; }
   }
-`;
+
+  @media (max-width: 480px) {
+    .page { padding: 0 12px 80px; }
+    .hero-left h1 { font-size: 2rem; }
+    .stats-grid   { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .stat-num     { font-size: 1.6rem; }
+    .section-title { font-size: 1.2rem; }
+    .lb-row { grid-template-columns: 28px 1fr 50px; gap: 6px; padding: 10px 12px; }
+    .lb-wins { display: none; }
+  }`
+
 
 // ─── Small helper components ──────────────────────────────────────────────────
 
@@ -646,7 +737,7 @@ export default function Tucheze254Home() {
             )}
 
             {/* ── POLL + ACTIVITY ── */}
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:24 }}>
+            <div className="poll-activity-grid" style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:24 }}>
 
               {/* Poll */}
               <div>
