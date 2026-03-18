@@ -1358,6 +1358,7 @@ export default function NewSession() {
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const createSession  = useMutation(api.sessions.create);
   const rawUsers       = useQuery(api.users.list);
+  const currentUser    = useQuery(api.users.currentUser) as any;
   const loadingPlayers = rawUsers === undefined;
   // Map Convex users to the Player shape used throughout NewSession
   const availablePlayers: Player[] = (rawUsers ?? []).map((u) => ({
@@ -1412,7 +1413,7 @@ export default function NewSession() {
             Tucheze254
           </div>
           <button className="ns-back" onClick={() => step > 1 ? setStep(s => (s - 1) as Step) : undefined}>
-            ← {step === 1 ? "Home" : "Back"}
+            ← {step === 1 ?<a href="/">Home</a>: "Back"}
           </button>
         </nav>
 
@@ -1564,6 +1565,7 @@ export default function NewSession() {
                         const sessionData = {
                           convexId,
                           inviteCode: code,
+                          createdBy:  currentUser?._id,
                           name:       form.name || "Game Night",
                           location:   form.location || "TBD",
                           players:    form.players,

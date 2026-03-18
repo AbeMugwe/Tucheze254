@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import BuzzerOverlay from "@/components/BuzzerOverlay";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -37,6 +38,7 @@ interface SessionData {
   playFormat?: "individual" | "teams";
   teams?: Team[];
   inviteCode?: string;
+  createdBy?: string;  // userId of the host — only they can control the session
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -214,7 +216,9 @@ const css = `
     background:rgba(255,255,255,0.1); color:white; cursor:pointer;
     transition:background .15s; white-space:nowrap;
   }
-    .ls-toast-wrap {
+  .ls-invite-copy:hover  { background:rgba(255,255,255,0.2); }
+  .ls-invite-copy.copied { background:var(--lime); color:var(--navy); border-color:var(--lime); }
+  .ls-toast-wrap {
   position: fixed;
   left: 50%;
   bottom: 20px;
@@ -244,9 +248,6 @@ const css = `
   animation: toastIn .35s cubic-bezier(0.34,1.56,0.64,1) forwards, toastOut .3s ease 2.5s forwards;
   white-space: nowrap;
 }
-  .ls-invite-copy:hover  { background:rgba(255,255,255,0.2); }
-  .ls-invite-copy.copied { background:var(--lime); color:var(--navy); border-color:var(--lime); }
-  .ls-toast { font-family:'Fredoka One',cursive; font-size:0.97rem; background:var(--navy); color:white; border:2.5px solid var(--navy); border-radius:50px; padding:9px 22px; box-shadow:var(--shadow-lg); animation: toastIn .35s cubic-bezier(0.34,1.56,0.64,1) forwards, toastOut .3s ease 2.5s forwards; white-space:nowrap; }
   @keyframes toastIn  { from{opacity:0;transform:translateY(16px) scale(0.9)} to{opacity:1;transform:translateY(0) scale(1)} }
   @keyframes toastOut { from{opacity:1} to{opacity:0;transform:translateY(-8px)} }
 
@@ -643,14 +644,19 @@ export default function LiveSession({ sessionData }: { sessionData?: SessionData
   const router          = useRouter();
   const session         = sessionData ?? DEMO_SESSION;
 
-  // Session has teams configured at all
+  // ── Host check ───────────────────────────────────────────────────────────
+  const currentUser = useQuery(api.users.currentUser) as any;
+  // isHost = true if logged-in user is the one who created the session
+  // Also true for the demo session (no createdBy) so demo still works fully
+  const isHost = !session.createdBy || currentUser?._id === session.createdBy;
+
   const hasTeams        = session.playFormat === "teams" && (session.teams?.length ?? 0) > 0;
   const isMultiGame     = session.games.length > 1;
   const completeSession = useMutation(api.sessions.complete);
 
   // ── Per-round score sheets ────────────────────────────────────────────────
   const [currentRound, setCurrentRound] = useState(0);
- const [roundScores, setRoundScores] = useState<PlayerScore[][]>(() =>
+  const [roundScores, setRoundScores] = useState<PlayerScore[][]>(() =>
   session.games.map(() => freshScores(session.players))
 );
 
@@ -720,6 +726,7 @@ useEffect(() => {
   const [showConfirm, setShowConfirm] = useState(false);
   const [saving, setSaving]           = useState(false);
   const [inviteCopied, setInviteCopied] = useState(false);
+  const [showBuzzer, setShowBuzzer]   = useState(false);
   const toastId   = useRef(0);
   const lastToast = useRef("");
 
@@ -946,7 +953,18 @@ useEffect(() => {
             </div>
 
             <div className="ls-header-btns">
-              {isMultiGame ? (
+              {/* Buzzer — host only */}
+              {isHost && (
+                <button
+                  className="ls-end-btn"
+                  style={{ borderColor:"#FFE135", color:"#FFE135" }}
+                  onClick={() => setShowBuzzer(true)}
+                >
+                  🔔 Buzzer
+                </button>
+              )}
+              {/* Session controls — host only */}
+              {isHost && (isMultiGame ? (
                 <>
                   <button className="ls-end-round-btn" onClick={handleEndRound}>
                     {isLast ? "🏁 End Last Round" : `✅ End Round ${currentRound+1}`}
@@ -955,6 +973,17 @@ useEffect(() => {
                 </>
               ) : (
                 <button className="ls-end-btn" onClick={() => setShowConfirm(true)}>🏁 End Session</button>
+              ))}
+              {/* Guest view — read-only indicator */}
+              {!isHost && (
+                <div style={{
+                  fontSize:"0.72rem", fontWeight:800,
+                  color:"rgba(255,255,255,0.3)",
+                  border:"1.5px solid rgba(255,255,255,0.15)",
+                  borderRadius:50, padding:"6px 14px",
+                }}>
+                  👀 Spectating
+                </div>
               )}
             </div>
           </div>
@@ -1013,11 +1042,29 @@ useEffect(() => {
           </div>
 
           <div>
-            <div className="ls-panel-title">🎯 Add Points</div>
-            {isTeams
-              ? <TeamPointsPanel teamScores={teamScores} onAdd={handleAddPoints} />
-              : <IndividualPointsPanel scores={curScores} onAdd={handleAddPoints} />
-            }
+            {isHost ? (
+              <>
+                <div className="ls-panel-title">🎯 Add Points</div>
+                {isTeams
+                  ? <TeamPointsPanel teamScores={teamScores} onAdd={handleAddPoints} />
+                  : <IndividualPointsPanel scores={curScores} onAdd={handleAddPoints} />
+                }
+              </>
+            ) : (
+              <div style={{
+                border:"3px solid rgba(255,255,255,0.15)", borderRadius:18,
+                padding:"28px 20px", textAlign:"center",
+                background:"rgba(255,255,255,0.04)",
+              }}>
+                <div style={{ fontSize:"2rem", marginBottom:10, fontFamily:"'Fredoka One',cursive", marginLeft: "150px" }}>Who will come out on top?👀</div>
+                <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:"1rem", color:"white", marginBottom:6 }}>
+                  Spectating
+                </div>
+                <div style={{ fontSize:"0.75rem", fontWeight:700, color:"rgba(255,255,255,0.3)", lineHeight:1.5 }}>
+                  Only the host can add points<br />and control the session.
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1063,6 +1110,18 @@ useEffect(() => {
             onPlayAgain={handlePlayAgain} onHome={() => router.push("/sessions")}
           />
         )}
+
+        {/* ── BUZZER OVERLAY ── */}
+        {showBuzzer && session.convexId && (
+          <BuzzerOverlay
+            sessionId={session.convexId}
+            sessionName={session.name}
+            isTeams={hasTeams}
+            teams={session.teams}
+            onClose={() => setShowBuzzer(false)}
+          />
+        )}
+
       </div>
     </>
   );

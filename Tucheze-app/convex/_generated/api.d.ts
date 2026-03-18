@@ -9,6 +9,7 @@
  */
 
 import type * as auth from "../auth.js";
+import type * as buzzers from "../buzzers.js";
 import type * as games from "../games.js";
 import type * as http from "../http.js";
 import type * as polls from "../polls.js";
@@ -23,6 +24,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
+  buzzers: typeof buzzers;
   games: typeof games;
   http: typeof http;
   polls: typeof polls;

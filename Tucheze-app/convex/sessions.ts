@@ -358,7 +358,7 @@ export const complete = mutation({
       status: "completed",
       players: ranked.map((p, i) => ({ ...p, rank: i + 1 })),
       winner,
-      teamWinner:winningTeam,
+      teamWinner: winningTeam,
       totalRounds,
       durationMinutes,
       roundWinners,
@@ -390,6 +390,10 @@ export const complete = mutation({
     // Update win/loss records + ELO for each player using proper ELO formula
     // K-factor: 32 for <10 games, 24 for 10-30, 16 for 30+
     const n = ranked.length;
+
+    // Need at least 2 players for ELO to make sense — skip ELO update for solo sessions
+    const updateElo = n >= 2;
+
     for (let i = 0; i < ranked.length; i++) {
       const p    = ranked[i];
       const user = await ctx.db.get(p.userId);
@@ -399,23 +403,26 @@ export const complete = mutation({
       const totalGames   = ((user as any).wins ?? 0) + ((user as any).losses ?? 0);
       const K            = totalGames < 10 ? 32 : totalGames < 30 ? 24 : 16;
 
-      // Against-the-field ELO: compare each player against the average of all others
-      let eloChange = 0;
-      for (let j = 0; j < ranked.length; j++) {
-        if (i === j) continue;
-        const opponent     = ranked[j];
-        const opponentUser = await ctx.db.get(opponent.userId);
-        const opponentElo  = (opponentUser as any)?.elo ?? 1000;
-        // Expected score: probability of beating opponent
-        const expected     = 1 / (1 + Math.pow(10, (opponentElo - currentElo) / 400));
-        // Actual score: 1 = beat them (lower rank = better), 0 = lost to them
-        const actual       = i < j ? 1 : 0;
-        eloChange         += K * (actual - expected);
-      }
-      // Normalise by number of opponents so range stays reasonable
-      eloChange = Math.round(eloChange / (n - 1));
+      let newElo = currentElo;
 
-      const newElo  = Math.max(100, currentElo + eloChange);
+      if (updateElo) {
+        // Against-the-field ELO: compare each player against every other
+        let eloChange = 0;
+        for (let j = 0; j < ranked.length; j++) {
+          if (i === j) continue;
+          const opponent     = ranked[j];
+          const opponentUser = await ctx.db.get(opponent.userId);
+          const opponentElo  = (opponentUser as any)?.elo ?? 1000;
+          const expected     = 1 / (1 + Math.pow(10, (opponentElo - currentElo) / 400));
+          const actual       = i < j ? 1 : 0;
+          eloChange         += K * (actual - expected);
+        }
+        // Normalise by number of opponents so range stays reasonable
+        const rawElo = currentElo + Math.round(eloChange / (n - 1));
+        // Sanitise — never write NaN or Infinity to the DB
+        newElo = isFinite(rawElo) && !isNaN(rawElo) ? Math.max(100, rawElo) : currentElo;
+      }
+
       // Top 3 finish = win, 4th place and below = loss
       const isPodium  = i < 3;
       const wins      = ((user as any).wins   ?? 0) + (isPodium ? 1 : 0);

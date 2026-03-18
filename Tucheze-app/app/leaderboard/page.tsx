@@ -359,10 +359,10 @@ export default function LeaderboardPage() {
 
   const players: Player[] = (rawPlayers ?? []).map((p: any) => ({
     ...p,
-    elo:     p.elo     ?? 1000,
-    wins:    p.wins    ?? 0,
-    losses:  p.losses  ?? 0,
-    winRate: p.winRate ?? 0,
+    elo:     (p.elo     && !isNaN(p.elo))     ? p.elo     : 1000,
+    wins:    (p.wins    && !isNaN(p.wins))    ? p.wins    : 0,
+    losses:  (p.losses  && !isNaN(p.losses))  ? p.losses  : 0,
+    winRate: (p.winRate && !isNaN(p.winRate)) ? p.winRate : 0,
     badge:   p.badge   ?? "🌱 Rising",
   }));
 
@@ -391,9 +391,9 @@ export default function LeaderboardPage() {
   }, [players, search, sortBy, tierFilter]);
 
   // Stats
-  const topElo     = players.length > 0 ? Math.max(...players.map(p => p.elo)) : 0;
-  const avgElo     = players.length > 0 ? Math.round(players.reduce((s, p) => s + p.elo, 0) / players.length) : 0;
-  const totalWins  = players.reduce((s, p) => s + p.wins, 0);
+  const topElo    = players.length > 0 ? Math.max(...players.map(p => p.elo ?? 1000)) : 0;
+  const avgElo    = players.length > 0 ? Math.round(players.reduce((s, p) => s + (p.elo ?? 1000), 0) / players.length) : 0;
+  const totalWins = players.reduce((s, p) => s + (p.wins ?? 0), 0);
 
   // Top 3 for podium (sorted by ELO)
   const top3 = [...players].sort((a, b) => b.elo - a.elo).slice(0, 3);
@@ -580,13 +580,13 @@ export default function LeaderboardPage() {
 
                     {/* ELO */}
                     <div className="lb-col-elo">
-                      <div className="lb-elo-num" style={{ color: tier.color }}>{player.elo}</div>
+                      <div className="lb-elo-num" style={{ color: tier.color }}>{player.elo ?? 1000}</div>
                       <div className="lb-elo-label">ELO</div>
                     </div>
 
                     {/* Wins */}
                     <div className="lb-col-wins">
-                      {player.wins}🏅
+                      {player.wins ?? 0}🏅
                       <div style={{ fontSize: "0.62rem", fontWeight: 800, opacity: 0.4 }}>
                         {total}G
                       </div>
@@ -594,9 +594,9 @@ export default function LeaderboardPage() {
 
                     {/* Win rate */}
                     <div className="lb-col-rate">
-                      <div className="lb-rate-num">{player.winRate}%</div>
+                      <div className="lb-rate-num">{player.winRate ?? 0}%</div>
                       <div className="lb-rate-bar">
-                        <div className="lb-rate-fill" style={{ width: `${player.winRate}%` }} />
+                        <div className="lb-rate-fill" style={{ width: `${player.winRate ?? 0}%` }} />
                       </div>
                     </div>
 

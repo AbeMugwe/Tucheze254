@@ -47,6 +47,7 @@ export default function SessionLivePage() {
         name:       convexLive.name,
         location:   convexLive.location,
         inviteCode: convexLive.inviteCode,
+        createdBy:  convexLive.createdBy,
         games:      convexLive.games ?? [],
         players:    (convexLive.players ?? []).map((p: any) => ({
           id:    p.userId,

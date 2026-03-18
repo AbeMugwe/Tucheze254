@@ -103,13 +103,35 @@ export default defineSchema({
   polls: defineTable({
     question:  v.string(),
     createdBy: v.id("users"),
-    closesAt:  v.string(),     // ISO string
+    closesAt:  v.string(),
     closed:    v.boolean(),
     options:   v.array(v.object({
       game:    v.string(),
       emoji:   v.string(),
-      votes:   v.array(v.id("users")),  // array of userIds who voted for this
+      votes:   v.array(v.id("users")),
     })),
   })
     .index("by_closed", ["closed"]),
+
+  // One row per session — tracks the current active buzzer round.
+  // Host resets increment roundNumber, which all player pages react to.
+  buzzerRounds: defineTable({
+    sessionId:    v.id("sessions"),
+    roundNumber:  v.number(),   // increments on every host reset
+    questionNum:  v.number(),   // shown in UI as "Question 1, 2, 3..."
+    isOpen:       v.boolean(),  // false = host has closed buzzing for this question
+  })
+    .index("by_session", ["sessionId"]),
+
+  // One row per buzz — many rows per round
+  buzzes: defineTable({
+    sessionId:   v.id("sessions"),
+    roundNumber: v.number(),   // matches buzzerRounds.roundNumber
+    userId:      v.id("users"),
+    nickname:    v.string(),
+    color:       v.string(),
+    teamName:    v.optional(v.string()),
+    teamColor:   v.optional(v.string()),
+  })
+    .index("by_session_round", ["sessionId", "roundNumber"]),
 });
