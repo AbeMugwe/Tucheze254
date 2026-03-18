@@ -628,6 +628,127 @@ const css = `
     background: white; color: #1a1a2e; outline: none; cursor: pointer;
     box-shadow: 2px 2px 0 #1a1a2e; appearance: none;
   }
+
+  /* ── MOBILE ── */
+  @media (max-width: 768px) {
+    /* Nav */
+    .ns-nav { padding: 12px 16px; }
+    .ns-logo { font-size: 1.2rem; }
+    .ns-logo-badge { width: 26px; height: 26px; font-size: 0.85rem; }
+    .ns-back { font-size: 0.78rem; padding: 6px 14px; }
+
+    /* Layout — stack sidebar above main */
+    .ns-layout {
+      grid-template-columns: 1fr;
+      padding: 16px 14px 100px;
+      gap: 16px;
+    }
+
+    /* Sidebar — horizontal step indicator instead of vertical list */
+    .ns-sidebar { position: static; }
+    .ns-steps {
+      display: flex; flex-direction: row;
+      border-radius: 14px; overflow: hidden;
+      margin-bottom: 0;
+    }
+    .ns-step-item {
+      flex: 1; flex-direction: column; align-items: center;
+      padding: 10px 6px; gap: 4px; border-bottom: none;
+      border-right: 2px solid #eee; text-align: center;
+    }
+    .ns-step-item:last-child { border-right: none; }
+    .ns-step-num { width: 26px; height: 26px; font-size: 0.78rem; }
+    .ns-step-label { font-size: 0.7rem; }
+    .ns-step-sub   { display: none; }
+
+    /* Hide the preview card on mobile — too much space */
+    .ns-preview { display: none; }
+
+    /* Cards */
+    .ns-card { padding: 16px; border-radius: 16px; }
+    .ns-card-title { font-size: 0.9rem; margin-bottom: 14px; }
+
+    /* Step header */
+    .ns-step-header { margin-bottom: 14px; }
+    .ns-step-badge  { font-size: 0.65rem; padding: 3px 10px; margin-bottom: 6px; }
+    .ns-step-title  { font-size: 1.5rem; }
+    .ns-step-desc   { font-size: 0.82rem; }
+
+    /* Fields */
+    .ns-field { margin-bottom: 14px; }
+    .ns-label { font-size: 0.65rem; }
+    .ns-input { padding: 10px 12px; font-size: 0.9rem; }
+    .ns-input-row { grid-template-columns: 1fr; gap: 0; }
+
+    /* Mode cards — stack vertically */
+    .ns-mode-row { grid-template-columns: 1fr; gap: 10px; }
+    .ns-mode-card { padding: 14px 16px; flex-direction: row; align-items: center; gap: 12px; text-align: left; }
+    .ns-mode-icon { font-size: 1.5rem; margin-bottom: 0; flex-shrink: 0; }
+
+    /* Format cards */
+    .ns-format-row { grid-template-columns: 1fr; gap: 10px; margin-bottom: 14px; }
+    .ns-format-card { padding: 14px 16px; }
+
+    /* Team builder */
+    .ns-team-count-row { gap: 8px; }
+    .ns-count-btn { padding: 8px 14px; font-size: 0.82rem; }
+    .ns-team-block { border-radius: 14px; }
+    .ns-team-head  { padding: 10px 14px; }
+    .ns-team-members { padding: 10px 14px; }
+    .ns-team-actions { gap: 8px; }
+    .ns-action-btn { padding: 8px 14px; font-size: 0.78rem; }
+
+    /* Player pool */
+    .ns-pool-chip { padding: 6px 10px; font-size: 0.78rem; }
+
+    /* Game cards */
+    .ns-quick-add-row { flex-direction: column; }
+    .ns-quick-name-input { width: 100%; }
+
+    /* Review grid — stack tiles */
+    .ns-review-grid { grid-template-columns: 1fr; gap: 12px; margin-bottom: 14px; }
+    .ns-review-tile-head { padding: 10px 14px; font-size: 0.82rem; }
+    .ns-review-tile-body { padding: 12px 14px; }
+
+    /* Share box */
+    .ns-share-box { flex-wrap: wrap; gap: 8px; padding: 12px; }
+    .ns-share-link { font-size: 0.72rem; width: 100%; }
+    .ns-copy-btn { width: 100%; justify-content: center; padding: 8px; }
+
+    /* Footer — fixed at bottom, full width */
+    .ns-footer {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      padding: 12px 16px;
+      background: #FFFDF5;
+      border-top: 3px solid #1a1a2e;
+      box-shadow: 0 -4px 20px rgba(0,0,0,0.08);
+      z-index: 100;
+      display: flex; gap: 10px;
+    }
+    .ns-btn {
+      flex: 1; padding: 13px 16px; font-size: 0.9rem;
+      justify-content: center;
+    }
+
+    /* Progress bar */
+    .ns-progress { border-radius: 0; }
+
+    /* Toggle rows */
+    .ns-toggle-row { padding: 12px 0; gap: 8px; }
+    .ns-toggle-label { font-size: 0.82rem; }
+    .ns-toggle-sub   { font-size: 0.68rem; }
+
+    /* Games list */
+    .ns-game-search { padding: 10px 12px 10px 38px; font-size: 0.88rem; }
+  }
+
+  @media (max-width: 420px) {
+    .ns-layout { padding: 12px 10px 100px; }
+    .ns-step-label { display: none; }
+    .ns-step-item  { padding: 10px 4px; }
+    .ns-step-title { font-size: 1.3rem; }
+    .ns-card { padding: 14px 12px; }
+  }
 `;
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -1413,7 +1534,7 @@ export default function NewSession() {
             Tucheze254
           </div>
           <button className="ns-back" onClick={() => step > 1 ? setStep(s => (s - 1) as Step) : undefined}>
-            ← {step === 1 ?<a href="/">Home</a>: "Back"}
+            ← {step === 1 ? <a href="/">Home</a> : "Back"}
           </button>
         </nav>
 
