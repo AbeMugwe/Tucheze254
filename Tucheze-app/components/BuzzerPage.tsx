@@ -240,7 +240,7 @@ export default function BuzzerPage({ sessionId, teamName, teamColor }: BuzzerPag
   // Replace "buzz.mp3" with your actual filename if different.
   const playBuzzSound = () => {
     try {
-      const audio = new Audio("/sounds/buzz.mp3");
+      const audio = new Audio("/sounds/yeah.mp3");
       audio.volume = 0.8;
       audio.play().catch(() => {}); // silences autoplay policy errors on some browsers
     } catch {
