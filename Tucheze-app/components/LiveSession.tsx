@@ -218,7 +218,7 @@ const css = `
   }
   .ls-invite-copy:hover  { background:rgba(255,255,255,0.2); }
   .ls-invite-copy.copied { background:var(--lime); color:var(--navy); border-color:var(--lime); }
-  .ls-toast-wrap {
+.ls-toast-wrap {
   position: fixed;
   left: 50%;
   bottom: 20px;
@@ -440,9 +440,11 @@ function IndividualPointsPanel({ scores, onAdd }: { scores: PlayerScore[]; onAdd
       <div className="ls-points-section">
         <div className="ls-points-label">Quick Add</div>
         <div className="ls-quick-pts">{QUICK_PTS.map(pts => <button key={pts} className="ls-quick-btn" disabled={!has} onClick={() => award(pts)}>+{pts}</button>)}</div>
+        <div className="ls-points-label">Quick Deduct</div>
+        <div className="ls-quick-pts">{QUICK_PTS.map(pts => <button key={pts} className="ls-quick-btn" disabled={!has} style={{ color:"#FF6B6B", borderColor:"#FF6B6B" }} onClick={() => award(-pts)}>−{pts}</button>)}</div>
         <div className="ls-points-label">Custom</div>
         <div className="ls-custom-row">
-          <input className="ls-custom-input" type="number" min={1} placeholder="pts" value={custom} onChange={e => setCustom(e.target.value)} onKeyDown={e => e.key==="Enter" && award(parseInt(custom)||0)} />
+          <input className="ls-custom-input" type="number" placeholder="pts" value={custom} onChange={e => setCustom(e.target.value)} onKeyDown={e => e.key==="Enter" && award(parseInt(custom)||0)} />
           <button className="ls-add-btn" disabled={!has||!custom} onClick={() => award(parseInt(custom)||0)}>＋ Add</button>
         </div>
         <div className="ls-deduct-row"><button className="ls-deduct-btn" disabled={!has} onClick={deduct}>− Deduct {custom||"1"}pt{sel.size>1?"s each":""}</button></div>
@@ -481,9 +483,11 @@ function TeamPointsPanel({ teamScores, onAdd }: { teamScores: TeamScore[]; onAdd
       <div className="ls-points-section">
         <div className="ls-points-label">Quick Add (all members)</div>
         <div className="ls-quick-pts">{QUICK_PTS.map(pts => <button key={pts} className="ls-quick-btn" disabled={!has} onClick={() => award(pts)}>+{pts}</button>)}</div>
+        <div className="ls-points-label">Quick Deduct</div>
+        <div className="ls-quick-pts">{QUICK_PTS.map(pts => <button key={pts} className="ls-quick-btn" disabled={!has} style={{ color:"#FF6B6B", borderColor:"#FF6B6B" }} onClick={() => award(-pts)}>−{pts}</button>)}</div>
         <div className="ls-points-label">Custom</div>
         <div className="ls-custom-row">
-          <input className="ls-custom-input" type="number" min={1} placeholder="pts" value={custom} onChange={e => setCustom(e.target.value)} onKeyDown={e => e.key==="Enter" && award(parseInt(custom)||0)} />
+          <input className="ls-custom-input" type="number" placeholder="pts" value={custom} onChange={e => setCustom(e.target.value)} onKeyDown={e => e.key==="Enter" && award(parseInt(custom)||0)} />
           <button className="ls-add-btn" disabled={!has||!custom} onClick={() => award(parseInt(custom)||0)}>＋ Add</button>
         </div>
         <div className="ls-deduct-row"><button className="ls-deduct-btn" disabled={!has} onClick={deduct}>− Deduct {custom||"1"}pt{sel.size>1?"s each":""}</button></div>
@@ -656,34 +660,9 @@ export default function LiveSession({ sessionData }: { sessionData?: SessionData
 
   // ── Per-round score sheets ────────────────────────────────────────────────
   const [currentRound, setCurrentRound] = useState(0);
-  const [roundScores, setRoundScores] = useState<PlayerScore[][]>(() =>
-  session.games.map(() => freshScores(session.players))
-);
-
-function mergePlayersIntoScores(scores: PlayerScore[], players: Player[]): PlayerScore[] {
-  const existing = new Map(scores.map((p) => [p.id, p]));
-  const merged = players.map((player) => {
-    const prev = existing.get(player.id);
-    return prev ?? {
-      ...player,
-      score: 0,
-      prevRank: 0,
-      rank: 0,
-      delta: null,
-    };
-  });
-
-  return assignRanks(merged);
-}
-
-useEffect(() => {
-  setRoundScores((prev) => {
-    return session.games.map((_, roundIndex) => {
-      const existingRound = prev[roundIndex] ?? [];
-      return mergePlayersIntoScores(existingRound, session.players);
-    });
-  });
-}, [session.players, session.games]);
+  const [roundScores, setRoundScores]   = useState<PlayerScore[][]>(() =>
+    session.games.map(() => freshScores(session.players))
+  );
   const [roundResults, setRoundResults] = useState<RoundResult[]>([]);
   const [pendingResult, setPendingResult] = useState<RoundResult | null>(null);
 
@@ -745,7 +724,7 @@ useEffect(() => {
       if (i !== currentRound) return rnd;
       const withPrev = rnd.map(p => ({...p, prevRank: p.rank}));
       return assignRanks(withPrev.map(p =>
-        playerIds.includes(p.id) ? {...p, score: Math.max(0, p.score+pts), delta: pts} : {...p, delta:null}
+        playerIds.includes(p.id) ? {...p, score: p.score+pts, delta: pts} : {...p, delta:null}
       ));
     }));
     if (isTeams) {
@@ -1056,7 +1035,7 @@ useEffect(() => {
                 padding:"28px 20px", textAlign:"center",
                 background:"rgba(255,255,255,0.04)",
               }}>
-                <div style={{ fontSize:"2rem", marginBottom:10, fontFamily:"'Fredoka One',cursive", marginLeft: "150px" }}>Who will come out on top?👀</div>
+                <div style={{ fontSize:"2rem", marginBottom:10 }}>👀</div>
                 <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:"1rem", color:"white", marginBottom:6 }}>
                   Spectating
                 </div>

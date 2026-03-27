@@ -178,6 +178,28 @@ const css = `
     background: #4ECDC4; border-color: #4ECDC4;
     box-shadow: 0 4px 20px rgba(78,205,196,0.25);
   }
+
+  /* ── QR CODE ── */
+  .bzo-qr-section { padding: 0 24px 4px; }
+  .bzo-qr-wrap {
+    display: flex; align-items: center; gap: 16px;
+    background: rgba(255,255,255,0.05); border: 1.5px solid rgba(255,255,255,0.1);
+    border-radius: 16px; padding: 14px 16px;
+  }
+  .bzo-qr-img {
+    width: 90px; height: 90px; border-radius: 10px;
+    background: white; padding: 5px; flex-shrink: 0;
+    image-rendering: pixelated;
+  }
+  .bzo-qr-info { flex: 1; }
+  .bzo-qr-title {
+    font-family: 'Fredoka One', cursive; font-size: 0.95rem;
+    color: white; margin-bottom: 4px;
+  }
+  .bzo-qr-sub {
+    font-size: 0.68rem; font-weight: 700;
+    color: rgba(255,255,255,0.35); line-height: 1.5;
+  }
 `;
 
 const posLabel = (pos: number) => ["🥇","🥈","🥉"][pos-1] ?? `#${pos}`;
@@ -194,6 +216,9 @@ export default function BuzzerOverlay({ sessionId, sessionName, isTeams, teams, 
   const buzzerUrl = typeof window !== "undefined"
     ? `${window.location.origin}/buzzer?s=${sessionId}`
     : `https://plotnplay.vercel.app/buzzer?s=${sessionId}`;
+
+  // QR code image URL — uses the free QR server API, no npm package needed
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(buzzerUrl)}&bgcolor=ffffff&color=1a1a2e&margin=2`;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(buzzerUrl).catch(() => {});
@@ -260,6 +285,23 @@ export default function BuzzerOverlay({ sessionId, sessionName, isTeams, teams, 
             </div>
             <div className="bzo-share-note">
               Players open this link once and keep the tab open. Their button resets automatically every question.
+            </div>
+          </div>
+
+          {/* QR Code */}
+          <div className="bzo-qr-section">
+            <div className="bzo-qr-wrap">
+              <img
+                src={qrUrl}
+                alt="Buzzer QR code"
+                className="bzo-qr-img"
+              />
+              <div className="bzo-qr-info">
+                <div className="bzo-qr-title">📱 Scan to Join</div>
+                <div className="bzo-qr-sub">
+                  Show this QR code on screen — players scan it with their phone camera to open the buzzer instantly. No link needed.
+                </div>
+              </div>
             </div>
           </div>
 

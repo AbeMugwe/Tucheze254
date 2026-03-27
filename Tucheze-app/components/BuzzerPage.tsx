@@ -240,7 +240,7 @@ export default function BuzzerPage({ sessionId, teamName, teamColor }: BuzzerPag
   // Replace "buzz.mp3" with your actual filename if different.
   const playBuzzSound = () => {
     try {
-      const audio = new Audio("/sounds/yeah.mp3");
+      const audio = new Audio("/sounds/buzz.mp3");
       audio.volume = 0.8;
       audio.play().catch(() => {}); // silences autoplay policy errors on some browsers
     } catch {
@@ -280,14 +280,102 @@ export default function BuzzerPage({ sessionId, teamName, teamColor }: BuzzerPag
     !hasBuzzed && !isOpen && state?.started ? "state-closed" : "",
   ].filter(Boolean).join(" ");
 
-  // Loading
-  if (!currentUser || state === undefined) {
+  // Loading — wait for auth state to resolve
+  if (currentUser === undefined || (sessionId && state === undefined)) {
     return (
       <>
         <style>{FONTS}{css}</style>
         <div className="bz-root">
           <div className="bz-glow" style={{ width:400, height:400, background:"#FF6B6B", top:-100, right:-100, opacity:0.15 }} />
           <div className="bz-spinner" />
+        </div>
+      </>
+    );
+  }
+
+  // ── NOT LOGGED IN — show auth gate ───────────────────────────────────────
+  if (currentUser === null) {
+    return (
+      <>
+        <style>{FONTS}{css}</style>
+        <style>{`
+          .bz-auth-gate {
+            background: #FFFDF5; border: 3px solid #1a1a2e;
+            border-radius: 28px; box-shadow: 0 24px 80px rgba(0,0,0,0.5);
+            width: 100%; max-width: 400px; padding: 40px 32px;
+            text-align: center; position: relative; z-index: 1;
+            animation: bzGatePop 0.4s cubic-bezier(0.34,1.56,0.64,1);
+          }
+          @keyframes bzGatePop { from{transform:scale(0.85);opacity:0} to{transform:scale(1);opacity:1} }
+          .bz-auth-icon { font-size: 3.5rem; margin-bottom: 12px; }
+          .bz-auth-title {
+            font-family: 'Fredoka One', cursive; font-size: 1.7rem;
+            color: #1a1a2e; margin-bottom: 8px; line-height: 1.1;
+          }
+          .bz-auth-sub {
+            font-size: 0.85rem; font-weight: 700; color: #555;
+            opacity: 0.6; margin-bottom: 28px; line-height: 1.6;
+          }
+          .bz-auth-btns { display: flex; flex-direction: column; gap: 12px; }
+          .bz-auth-btn {
+            font-family: 'Fredoka One', cursive; font-size: 1.05rem;
+            padding: 14px 24px; border: 3px solid #1a1a2e; border-radius: 16px;
+            cursor: pointer; text-decoration: none; display: flex;
+            align-items: center; justify-content: center; gap: 8px;
+            box-shadow: 4px 4px 0 #1a1a2e;
+            transition: transform 0.1s, box-shadow 0.1s;
+          }
+          .bz-auth-btn:hover { transform: translate(-2px,-2px); box-shadow: 6px 6px 0 #1a1a2e; }
+          .bz-auth-btn.primary { background: #FF6B6B; color: white; }
+          .bz-auth-btn.secondary { background: white; color: #1a1a2e; }
+          .bz-auth-divider {
+            font-size: 0.72rem; font-weight: 800; opacity: 0.3;
+            margin: 4px 0; text-align: center;
+          }
+          .bz-auth-logo {
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            margin-bottom: 28px;
+          }
+          .bz-auth-logo-badge {
+            width: 32px; height: 32px; border-radius: 50%;
+            background: #FFE135; border: 2.5px solid #1a1a2e;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1rem; box-shadow: 2px 2px 0 #1a1a2e;
+          }
+          .bz-auth-logo-text {
+            font-family: 'Fredoka One', cursive; font-size: 1.3rem;
+            color: #1a1a2e;
+          }
+        `}</style>
+        <div className="bz-root">
+          <div className="bz-glow" style={{ width:500, height:500, background:"#FF6B6B", top:-150, right:-150, opacity:0.15 }} />
+          <div className="bz-glow" style={{ width:400, height:400, background:"#4ECDC4", bottom:-100, left:-100, opacity:0.1 }} />
+          <div className="bz-auth-gate">
+            <div className="bz-auth-logo">
+              <div className="bz-auth-logo-badge">🎲</div>
+              <span className="bz-auth-logo-text">Tucheze254</span>
+            </div>
+            <div className="bz-auth-icon">🔔</div>
+            <div className="bz-auth-title">Sign in to Buzz</div>
+            <div className="bz-auth-sub">
+              You need a Tucheze254 account to use the buzzer. It's free and takes 30 seconds.
+            </div>
+            <div className="bz-auth-btns">
+              <a
+                href={`/signup?redirect=/buzzer?s=${sessionId}`}
+                className="bz-auth-btn primary"
+              >
+                ✨ Sign Up Free
+              </a>
+              <div className="bz-auth-divider">already have an account?</div>
+              <a
+                href={`/signin?redirect=/buzzer?s=${sessionId}`}
+                className="bz-auth-btn secondary"
+              >
+                🔑 Log In
+              </a>
+            </div>
+          </div>
         </div>
       </>
     );
