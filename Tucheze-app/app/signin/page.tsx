@@ -384,7 +384,7 @@ export default function SignIn() {
 
           <div className="si-logo">
             <div className="si-logo-badge">🎲</div>
-            <div className="si-logo-text">Tucheze254</div>
+            <div className="si-logo-text">PlotnPlay</div>
           </div>
 
           <div className="si-left-content">
@@ -433,7 +433,7 @@ export default function SignIn() {
             ) : (
               <>
                 <div className="si-form-title">Welcome back <span>👋</span></div>
-                <div className="si-form-sub">Sign in to your Tucheze254 account</div>
+                <div className="si-form-sub">Sign in to your PlotnPlay account</div>
 
                 <form onSubmit={handleSubmit} noValidate>
                   <Field label="EMAIL ADDRESS" icon="📧" type="email"
@@ -473,7 +473,7 @@ export default function SignIn() {
                 </div>
 
                 <div className="si-switch">
-                  New to Tucheze254?{" "}
+                  New to PlotnPlay?{" "}
                   <a href="/signup" className="si-switch-link">Create an account →</a>
                 </div>
               </>

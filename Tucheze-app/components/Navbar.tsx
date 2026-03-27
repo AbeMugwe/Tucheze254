@@ -168,7 +168,7 @@ export default function Navbar() {
         {/* Logo */}
         <Link href="/" className="logo">
           <div className="logo-badge">🎲</div>
-          Tucheze254
+          PlotnPlay
         </Link>
 
         {/* Desktop nav links */}

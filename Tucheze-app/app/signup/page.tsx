@@ -552,7 +552,7 @@ export default function SignUp() {
 
           <div className="su-logo">
             <div className="su-logo-badge">🎲</div>
-            <div className="su-logo-text">Tucheze254</div>
+            <div className="su-logo-text">PlotnPlay</div>
           </div>
 
           <div className="su-left-content">
