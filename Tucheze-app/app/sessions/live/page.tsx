@@ -47,12 +47,15 @@ export default function SessionLivePage() {
       name:       convexLive.name,
       location:   convexLive.location,
       inviteCode: convexLive.inviteCode,
+      createdBy:  convexLive.createdBy,
       games:      convexLive.games ?? [],
       players:    (convexLive.players ?? []).map((p: any) => ({
         id:    p.userId,
         name:  p.nickname ?? "Player",
         emoji: p.avatar   ?? "🎲",
         color: p.color    ?? "#4ECDC4",
+        score: p.score ?? 0,
+        rank: p.rank ?? 0,
       })),
       playFormat: convexLive.playFormat ?? "individual",
       teams:      convexLive.teams,
@@ -71,6 +74,8 @@ export default function SessionLivePage() {
       name:  p.nickname ?? "Player",
       emoji: p.avatar   ?? "🎲",
       color: p.color    ?? "#4ECDC4",
+      score: p.score ?? 0,
+      rank: p.rank ?? 0,
     }));
 
   const mergedPlayers =
@@ -110,5 +115,5 @@ export default function SessionLivePage() {
   // Still loading Convex for guest
   if (!hostData && convexLive === undefined) return null;
 
-  return <LiveSession sessionData={finalSessionData} />;
+ return <LiveSession sessionData={finalSessionData} convexSession={convexById ?? convexLive} />; 
 }

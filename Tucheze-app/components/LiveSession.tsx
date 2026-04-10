@@ -8,7 +8,14 @@ import BuzzerOverlay from "@/components/BuzzerOverlay";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface Player { id: string; name: string; emoji: string; color: string; }
+interface Player {
+  id: string;
+  name: string;
+  emoji: string;
+  color: string;
+  score?: number;
+  rank?: number;
+}
 interface Team   { id: string; name: string; emoji: string; color: string; playerIds: string[]; }
 
 interface PlayerScore extends Player {
@@ -332,7 +339,15 @@ function buildTeamScores(teams: Team[], playerScores: PlayerScore[], prevTeams: 
   }));
 }
 function freshScores(players: Player[]): PlayerScore[] {
-  return assignRanks(players.map(p => ({...p, score:0, prevRank:0, rank:0, delta:null})));
+  return assignRanks(
+    players.map((p) => ({
+      ...p,
+      score: p.score ?? 0,
+      prevRank: 0,
+      rank: p.rank ?? 0,
+      delta: null,
+    }))
+  );
 }
 
 
@@ -645,7 +660,7 @@ const DEMO_SESSION: SessionData = {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function LiveSession({ sessionData }: { sessionData?: SessionData }) {
+export default function LiveSession({ sessionData, convexSession, }: { sessionData?: SessionData; convexSession: any; }) {
   const router          = useRouter();
   const session         = sessionData ?? DEMO_SESSION;
 
@@ -665,10 +680,25 @@ export default function LiveSession({ sessionData }: { sessionData?: SessionData
     session.games.map(() => freshScores(session.players))
   );
   
-  function mergePlayersIntoScores(scores: PlayerScore[], players: Player[]): PlayerScore[] {
+  
+  
+  function mergePlayersIntoScores(
+  scores: PlayerScore[],
+  players: Player[],
+  trustIncomingScores = false
+): PlayerScore[] {
   const existing = new Map(scores.map((p) => [p.id, p]));
   const merged = players.map((player) => {
     const prev = existing.get(player.id);
+    if (trustIncomingScores) {
+      // Guest path: always use the score from Convex
+      return {
+        ...(prev ?? { prevRank: 0, rank: 0, delta: null }),
+        ...player,
+        score: player.score ?? 0,
+      };
+    }
+    // Host path: keep local score state, only add new players at 0
     return prev ?? {
       ...player,
       score: 0,
@@ -677,7 +707,6 @@ export default function LiveSession({ sessionData }: { sessionData?: SessionData
       delta: null,
     };
   });
-
   return assignRanks(merged);
 }
 
@@ -685,10 +714,11 @@ export default function LiveSession({ sessionData }: { sessionData?: SessionData
   setRoundScores((prev) => {
     return session.games.map((_, roundIndex) => {
       const existingRound = prev[roundIndex] ?? [];
-      return mergePlayersIntoScores(existingRound, session.players);
+      return mergePlayersIntoScores(existingRound, session.players, !isHost);
     });
   });
-}, [session.players, session.games]);
+}, [session.players, session.games, isHost]);
+
   const [roundResults, setRoundResults] = useState<RoundResult[]>([]);
   const [pendingResult, setPendingResult] = useState<RoundResult | null>(null);
 
@@ -744,7 +774,73 @@ export default function LiveSession({ sessionData }: { sessionData?: SessionData
     setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 2800);
   }, []);
 
+  const updateScores = useMutation(api.sessions.updateScores); 
+
+  useEffect(() => {
+  if (!isHost || !session.convexId) return;
+
+  updateScores({
+    sessionId: session.convexId as any,
+    players: curScores.map((p) => ({
+      userId: p.id as any,
+      nickname: p.name,
+      avatar: p.emoji,
+      color: p.color,
+      score: p.score,
+      rank: p.rank,
+    })),
+  }).catch(console.error);
+}, [isHost, session.convexId, curScores, updateScores]);
+
+// Sync end/round state for spectators from Convex session status
+useEffect(() => {
+  if (isHost || !convexSession) return;
+
+  // Show end screen when host completes the session
+  if (convexSession.status === "completed" && !showEnd) {
+    // Rebuild final scores from Convex players
+    const finalPlayers: PlayerScore[] = assignRanks(
+      (convexSession.players ?? []).map((p: any) => ({
+        id:       p.userId,
+        name:     p.nickname ?? "Player",
+        emoji:    p.avatar   ?? "🎲",
+        color:    p.color    ?? "#4ECDC4",
+        score:    p.score    ?? 0,
+        prevRank: 0,
+        rank:     p.rank     ?? 0,
+        delta:    null,
+      }))
+    );
+    // Push into round 0 scores so totalScores computes correctly
+    setRoundScores([finalPlayers]);
+    setShowEnd(true);
+  }
+
+  // Show round-end modal when host ends a round (roundWinners grows)
+  if (convexSession.roundWinners && !showEnd) {
+    const serverRoundCount = convexSession.roundWinners.length;
+    const localRoundCount  = roundResults.length;
+    if (serverRoundCount > localRoundCount) {
+      const rw = convexSession.roundWinners[serverRoundCount - 1];
+      const result: RoundResult = {
+        roundIndex:   rw.gameIndex,
+        game:         session.games[rw.gameIndex] ?? { name: rw.gameName, emoji: rw.gameEmoji },
+        winnerName:   rw.nickname,
+        winnerEmoji:  rw.avatar,
+        winnerColor:  rw.color,
+      };
+      setRoundResults(prev => [...prev, result]);
+      setPendingResult(result);
+      setCurrentRound(serverRoundCount); // advance to next round
+    }
+  }
+}, [convexSession, isHost, showEnd, roundResults.length]);
+
+
+
+
   const handleAddPoints = useCallback((playerIds: string[], pts: number) => {
+    if (!isHost) return;
     const targets = curScores.filter(p => playerIds.includes(p.id));
     setRoundScores(prev => prev.map((rnd, i) => {
       if (i !== currentRound) return rnd;
@@ -762,9 +858,10 @@ export default function LiveSession({ sessionData }: { sessionData?: SessionData
       else if (targets.length>1) pushToast(`${targets.map(p=>p.emoji).join("")} ${pts>=0?"+":""}${pts}pts each`);
     }
     setTimeout(() => setRoundScores(prev => prev.map((rnd,i) => i===currentRound ? rnd.map(p=>({...p,delta:null})) : rnd)), 2200);
-  }, [curScores, currentRound, isTeams, session.teams, pushToast]);
+  }, [curScores, currentRound, isTeams, session.teams, pushToast, isHost]);
 
   const handleEndRound = useCallback(() => {
+    if (!isHost) return;
     const game = session.games[currentRound];
     const rnd  = roundScores[currentRound];
     const isLast = currentRound === session.games.length - 1;
@@ -783,9 +880,10 @@ export default function LiveSession({ sessionData }: { sessionData?: SessionData
     const result: RoundResult = { roundIndex: currentRound, game, winnerName, winnerEmoji, winnerColor };
     setRoundResults(prev => [...prev, result]);
     setPendingResult(result);
-  }, [currentRound, session.games, session.teams, roundScores, isTeams]);
+  }, [currentRound, session.games, session.teams, roundScores, isTeams, isHost]);
 
   const handleConfirmEnd = useCallback(async () => {
+    if (!isHost) return;
     setShowConfirm(false);
     setShowEnd(true);
     setSaving(true);
@@ -841,7 +939,7 @@ export default function LiveSession({ sessionData }: { sessionData?: SessionData
       }
     } catch (e) { console.error("Failed to save session:", e); }
     finally { setSaving(false); }
-  }, [session, hasTeams, roundScores, completeSession]);
+  }, [session, hasTeams, roundScores, completeSession, isHost]);
 
   const handleAdvanceRound = useCallback(() => {
     setPendingResult(null);
@@ -874,6 +972,7 @@ export default function LiveSession({ sessionData }: { sessionData?: SessionData
     if (gt === "team")       return "🫂 Team Round";        // forced team
     return null;                                            // "both" — no label needed
   })();
+
 
   return (
     <>
@@ -959,38 +1058,37 @@ export default function LiveSession({ sessionData }: { sessionData?: SessionData
 
             <div className="ls-header-btns">
               {/* Buzzer — host only */}
-              {isHost && (
-                <button
-                  className="ls-end-btn"
-                  style={{ borderColor:"#FFE135", color:"#FFE135" }}
-                  onClick={() => setShowBuzzer(true)}
-                >
-                  🔔 Buzzer
-                </button>
-              )}
-              {/* Session controls — host only */}
-              {isHost && (isMultiGame ? (
-                <>
-                  <button className="ls-end-round-btn" onClick={handleEndRound}>
-                    {isLast ? "🏁 End Last Round" : `✅ End Round ${currentRound+1}`}
-                  </button>
-                  <button className="ls-end-btn" onClick={() => setShowConfirm(true)}>End Session</button>
-                </>
-              ) : (
-                <button className="ls-end-btn" onClick={() => setShowConfirm(true)}>🏁 End Session</button>
-              ))}
-              {/* Guest view — read-only indicator */}
-              {!isHost && (
-                <div style={{
-                  fontSize:"0.72rem", fontWeight:800,
-                  color:"rgba(255,255,255,0.3)",
-                  border:"1.5px solid rgba(255,255,255,0.15)",
-                  borderRadius:50, padding:"6px 14px",
-                }}>
-                  👀 Spectating
-                </div>
-              )}
-            </div>
+              {isHost ? (
+    isMultiGame ? (
+      <>
+        <button className="ls-end-round-btn" onClick={handleEndRound}>
+          {isLast ? "🏁 End Last Round" : `✅ End Round ${currentRound + 1}`}
+        </button>
+        <button className="ls-end-btn" onClick={() => setShowConfirm(true)}>
+          End Session
+        </button>
+      </>
+    ) : (
+      <button className="ls-end-btn" onClick={() => setShowConfirm(true)}>
+        🏁 End Session
+      </button>
+    )
+  ) : (
+    <div
+      style={{
+        background: "rgba(255,255,255,0.08)",
+        border: "1.5px solid rgba(255,255,255,0.15)",
+        borderRadius: 12,
+        padding: "9px 14px",
+        fontSize: "0.75rem",
+        fontWeight: 800,
+        color: "rgba(255,255,255,0.7)",
+      }}
+    >
+      👀 Spectating live
+    </div>
+  )}
+</div>
           </div>
         </div>
 
