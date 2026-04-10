@@ -1480,7 +1480,18 @@ export default function NewSession() {
   const createSession  = useMutation(api.sessions.create);
   const rawUsers       = useQuery(api.users.list);
   const currentUser    = useQuery(api.users.currentUser) as any;
+  const isAdmin        = useQuery(api.users.isAdmin, currentUser ? {} : "skip") as boolean | undefined;
   const loadingPlayers = rawUsers === undefined;
+
+  // Redirect non-admins away from this page
+  if (currentUser === null) {
+    router.replace("/signin");
+    return null;
+  }
+  if (isAdmin === false) {
+    router.replace("/sessions");
+    return null;
+  }
   // Map Convex users to the Player shape used throughout NewSession
   const availablePlayers: Player[] = (rawUsers ?? []).map((u) => ({
     id:    u._id,
@@ -1531,10 +1542,10 @@ export default function NewSession() {
         <nav className="ns-nav">
           <div className="ns-logo">
             <div className="ns-logo-badge">🎲</div>
-            Tucheze254
+            PlotnPlay
           </div>
           <button className="ns-back" onClick={() => step > 1 ? setStep(s => (s - 1) as Step) : undefined}>
-            ← {step === 1 ? <a href="/">Home</a> : "Back"}
+            ← {step === 1 ? "Home" : "Back"}
           </button>
         </nav>
 
@@ -1677,7 +1688,18 @@ export default function NewSession() {
                           })),
                           playerIds: playerIds as any,
                           allowJoin: form.allowJoinLink,
-                        });
+                          playFormat: form.playFormat,
+                          teams:
+                            form.playFormat === "teams"
+                            ? form.teams.map((t) => ({
+                              id: t.id,
+                              name: t.name,
+                              emoji: t.emoji,
+                              color: t.color,
+                              playerIds: t.playerIds as any,
+                            }))
+                            : undefined,
+                          });
 
                         // Save the real invite code so the review step can display it
                         setInviteCode(code);

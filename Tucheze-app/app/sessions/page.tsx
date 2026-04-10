@@ -511,6 +511,8 @@ function SessionCard({ session, onClick, style }: {
   const st = statusStyle(session.status);
   const shownPlayers = session.players.slice(0, 5);
   const extraPlayers = session.players.length - 5;
+  
+  
 
   // BG tint based on status
   const bannerBg = session.status === "live"

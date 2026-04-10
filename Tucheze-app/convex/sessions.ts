@@ -13,6 +13,14 @@ const playerShape = v.object({
   rank:     v.number(),
 });
 
+const teamShape = v.object({
+  id: v.string(),
+  name: v.string(),
+  emoji: v.string(),
+  color: v.string(),
+  playerIds: v.array(v.id("users")),
+});
+
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
 // All sessions for the current user — where they are creator OR a player
@@ -188,6 +196,15 @@ function generateInviteCode(): string {
   }
   return code;
 }
+function pickTeamForLateJoin<T extends { playerIds: any[] }>(teams: T[]): T | null {
+  if (!teams.length) return null;
+
+  const sorted = [...teams].sort((a, b) => a.playerIds.length - b.playerIds.length);
+  const smallestSize = sorted[0].playerIds.length;
+  const smallestTeams = sorted.filter((t) => t.playerIds.length === smallestSize);
+
+  return smallestTeams[Math.floor(Math.random() * smallestTeams.length)] ?? null;
+}
 
 // ─── Mutations ────────────────────────────────────────────────────────────────
 
@@ -204,6 +221,8 @@ export const create = mutation({
     })),
     playerIds:  v.array(v.id("users")),
     allowJoin:  v.optional(v.boolean()),
+    playFormat: v.optional(v.union(v.literal("individual"), v.literal("teams"))),
+    teams: v.optional(v.array(teamShape)),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -237,6 +256,8 @@ export const create = mutation({
       createdBy:  userId as any,
       inviteCode,
       allowJoin:  args.allowJoin ?? true,
+      playFormat: args.playFormat,
+      teams: args.teams
     });
 
     return { id: sessionId, inviteCode };
@@ -288,9 +309,28 @@ export const joinByCode = mutation({
       rank:     session.players.length + 1,
     };
 
-    await ctx.db.patch(session._id, {
-      players: [...session.players, newPlayer],
-    });
+    let updatedTeams = session.teams
+
+    if (
+      session.playFormat === "teams" &&
+      session.teams &&
+      session.teams.length > 0
+    ) {
+      const chosenTeam = pickTeamForLateJoin(session.teams);
+
+    if (chosenTeam) {
+      updatedTeams = session.teams.map((team: any) =>
+        team.id === chosenTeam.id
+          ? { ...team, playerIds: [...team.playerIds, userId] }
+         : team
+      );
+    }
+  }
+
+  await ctx.db.patch(session._id, {
+    players: [...session.players, newPlayer],
+    teams: updatedTeams,
+  });
 
     return { status: "joined", sessionId: session._id };
   },

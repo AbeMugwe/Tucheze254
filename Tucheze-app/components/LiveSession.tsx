@@ -335,6 +335,7 @@ function freshScores(players: Player[]): PlayerScore[] {
   return assignRanks(players.map(p => ({...p, score:0, prevRank:0, rank:0, delta:null})));
 }
 
+
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
 interface Toast { id: number; msg: string; }
@@ -663,6 +664,31 @@ export default function LiveSession({ sessionData }: { sessionData?: SessionData
   const [roundScores, setRoundScores]   = useState<PlayerScore[][]>(() =>
     session.games.map(() => freshScores(session.players))
   );
+  
+  function mergePlayersIntoScores(scores: PlayerScore[], players: Player[]): PlayerScore[] {
+  const existing = new Map(scores.map((p) => [p.id, p]));
+  const merged = players.map((player) => {
+    const prev = existing.get(player.id);
+    return prev ?? {
+      ...player,
+      score: 0,
+      prevRank: 0,
+      rank: 0,
+      delta: null,
+    };
+  });
+
+  return assignRanks(merged);
+}
+
+  useEffect(() => {
+  setRoundScores((prev) => {
+    return session.games.map((_, roundIndex) => {
+      const existingRound = prev[roundIndex] ?? [];
+      return mergePlayersIntoScores(existingRound, session.players);
+    });
+  });
+}, [session.players, session.games]);
   const [roundResults, setRoundResults] = useState<RoundResult[]>([]);
   const [pendingResult, setPendingResult] = useState<RoundResult | null>(null);
 

@@ -82,7 +82,44 @@ export const leaderboard = query({
   },
 });
 
-// ─── Mutations ────────────────────────────────────────────────────────────────
+// ─── Admin check ─────────────────────────────────────────────────────────────
+
+/**
+ * Returns true if the current user's email is in the ADMIN_EMAILS
+ * environment variable (comma-separated list set in Convex dashboard).
+ *
+ * Set it via:
+ *   npx convex env set ADMIN_EMAILS "alice@gmail.com,bob@gmail.com"
+ *
+ * Or in the Convex dashboard → Settings → Environment Variables.
+ */
+export const isAdmin = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return false;
+
+    // Get the user's email from authAccounts (where Convex Auth stores it)
+    const account = await ctx.db
+      .query("authAccounts")
+      .filter((q) => q.eq(q.field("userId"), userId))
+      .first();
+
+    if (!account?.providerAccountId) return false;
+
+    const email = account.providerAccountId.toLowerCase().trim();
+
+    // Read the comma-separated admin email list from env
+    const raw = process.env.ADMIN_EMAILS ?? "";
+    const adminEmails = raw
+      .split(",")
+      .map((e) => e.toLowerCase().trim())
+      .filter(Boolean);
+
+    return adminEmails.includes(email);
+  },
+});
+
 
 /**
  * Creates the user profile row after a successful signup.

@@ -37,47 +37,56 @@ export default function SessionLivePage() {
   ) as any;
 
   const finalSessionData = useMemo(() => {
-    if (!ready) return null;
+  if (!ready) return null;
 
-    // ── GUEST PATH: no sessionStorage ────────────────────────────────────────
-    if (!hostData) {
-      if (!convexLive) return null;
-      return {
-        convexId:   convexLive._id,
-        name:       convexLive.name,
-        location:   convexLive.location,
-        inviteCode: convexLive.inviteCode,
-        createdBy:  convexLive.createdBy,
-        games:      convexLive.games ?? [],
-        players:    (convexLive.players ?? []).map((p: any) => ({
-          id:    p.userId,
-          name:  p.nickname ?? "Player",
-          emoji: p.avatar   ?? "🎲",
-          color: p.color    ?? "#4ECDC4",
-        })),
-        playFormat: convexLive.playFormat ?? "individual",
-        teams:      convexLive.teams,
-      };
-    }
-
-    // ── HOST PATH: merge Convex players into sessionStorage data ──────────────
-    const convexSource = convexById ?? convexLive;
-    if (!convexSource?.players) return hostData;
-
-    const existingIds = new Set(hostData.players.map((p: any) => p.id));
-    const lateJoiners = convexSource.players
-      .filter((p: any) => !existingIds.has(p.userId))
-      .map((p: any) => ({
+  // Guest path
+  if (!hostData) {
+    if (!convexLive) return null;
+    return {
+      convexId:   convexLive._id,
+      name:       convexLive.name,
+      location:   convexLive.location,
+      inviteCode: convexLive.inviteCode,
+      games:      convexLive.games ?? [],
+      players:    (convexLive.players ?? []).map((p: any) => ({
         id:    p.userId,
         name:  p.nickname ?? "Player",
         emoji: p.avatar   ?? "🎲",
         color: p.color    ?? "#4ECDC4",
-      }));
+      })),
+      playFormat: convexLive.playFormat ?? "individual",
+      teams:      convexLive.teams,
+    };
+  }
 
-    if (lateJoiners.length === 0) return hostData;
-    return { ...hostData, players: [...hostData.players, ...lateJoiners] };
+  // Host path
+  const convexSource = convexById ?? convexLive;
+  if (!convexSource?.players) return hostData;
 
-  }, [ready, hostData, convexLive, convexById]);
+  const existingIds = new Set((hostData.players ?? []).map((p: any) => p.id));
+  const lateJoiners = (convexSource.players ?? [])
+    .filter((p: any) => !existingIds.has(p.userId))
+    .map((p: any) => ({
+      id:    p.userId,
+      name:  p.nickname ?? "Player",
+      emoji: p.avatar   ?? "🎲",
+      color: p.color    ?? "#4ECDC4",
+    }));
+
+  const mergedPlayers =
+    lateJoiners.length === 0
+      ? hostData.players
+      : [...hostData.players, ...lateJoiners];
+
+  return {
+    ...hostData,
+    players: mergedPlayers,
+    playFormat: convexSource.playFormat ?? hostData.playFormat,
+    teams: convexSource.teams ?? hostData.teams,
+    inviteCode: convexSource.inviteCode ?? hostData.inviteCode,
+  };
+}, [ready, hostData, convexLive, convexById]);
+
 
   // Don't render until sessionStorage check is done
   if (!ready) return null;

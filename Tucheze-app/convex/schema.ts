@@ -2,7 +2,16 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 import { authTables } from "@convex-dev/auth/server";
 
+const teamShape = v.object({
+  id: v.string(),
+  name: v.string(),
+  emoji: v.string(),
+  color: v.string(),
+  playerIds: v.array(v.id("users")),
+});
+
 export default defineSchema({
+  
   ...authTables,
 
   users: defineTable({
@@ -67,6 +76,10 @@ export default defineSchema({
       score:    v.number(),
       rank:     v.number(),
     })),
+     playFormat: v.optional(
+      v.union(v.literal("individual"), v.literal("teams"))
+      ),
+    teams: v.optional(v.array(teamShape)),
     winner: v.optional(v.object({
       userId:   v.id("users"),
       nickname: v.string(),
@@ -134,4 +147,8 @@ export default defineSchema({
     teamColor:   v.optional(v.string()),
   })
     .index("by_session_round", ["sessionId", "roundNumber"]),
+  
+    
+
+    
 });

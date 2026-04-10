@@ -585,9 +585,9 @@ function GameRow({ game, trending, onClick, style }: {
 
 // ─── Detail Drawer ────────────────────────────────────────────────────────────
 
-function GameDrawer({ game, trending, userMap, onClose, onEdit }: {
+function GameDrawer({ game, trending, userMap, onClose, onEdit, isAdmin }: {
   game: Game; trending: boolean; userMap: Map<string, UserProfile>;
-  onClose: () => void; onEdit: () => void;
+  onClose: () => void; onEdit: () => void; isAdmin?: boolean;
 }) {
   return (
     <div className="gl-overlay" onClick={onClose}>
@@ -668,17 +668,21 @@ function GameDrawer({ game, trending, userMap, onClose, onEdit }: {
           )}
 
           <div className="gl-drawer-actions">
-            <Link
-              href={`/sessions/new?gameId=${game._id}`}
-              className="gl-drawer-btn primary"
-              onClick={(e) => e.stopPropagation()}
-              style={{ textDecoration: "none" }}
-            >
-              🎲 Play
-            </Link>
-            <button className="gl-drawer-btn secondary" onClick={(e) => { e.stopPropagation(); onEdit(); }}>
-              ✏️ Edit Game
-            </button>
+            {isAdmin && (
+              <Link
+                href={`/sessions/new?gameId=${game._id}`}
+                className="gl-drawer-btn primary"
+                onClick={(e) => e.stopPropagation()}
+                style={{ textDecoration: "none" }}
+              >
+                🎲 Play
+              </Link>
+            )}
+            {isAdmin && (
+              <button className="gl-drawer-btn secondary" onClick={(e) => { e.stopPropagation(); onEdit(); }}>
+                ✏️ Edit Game
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -945,6 +949,7 @@ export default function GamesPage() {
   const currentUser = useQuery(api.users.currentUser) as { _id: string; nickname?: string; avatar?: string; color?: string } | null | undefined;
   const games       = useQuery(api.games.list);
   const allUsers    = useQuery(api.users.leaderboard, currentUser ? {} : "skip") as UserProfile[] | undefined;
+  const isAdmin     = useQuery(api.users.isAdmin, currentUser ? {} : "skip") as boolean | undefined;
   const addGame     = useMutation(api.games.add);
   const updateGame  = useMutation(api.games.update);
 
@@ -1059,7 +1064,9 @@ export default function GamesPage() {
               </div>
             </div>
           </div>
-          <button className="gl-add-btn" onClick={() => setShowAdd(true)}>＋ Add Game</button>
+          {isAdmin && (
+            <button className="gl-add-btn" onClick={() => setShowAdd(true)}>＋ Add Game</button>
+          )}
         </div>
 
         {/* ── BODY ── */}
@@ -1166,6 +1173,7 @@ export default function GamesPage() {
           <GameDrawer
             game={selected} trending={trendingIds.has(selected._id)}
             userMap={userMap}
+            isAdmin={isAdmin}
             onClose={() => setSelected(null)}
             onEdit={() => { setEditingGame(selected); setSelected(null); }}
           />

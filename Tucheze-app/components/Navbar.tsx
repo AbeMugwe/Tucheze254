@@ -158,6 +158,7 @@ export default function Navbar() {
   const _currentUser = useQuery(api.users.currentUser);
   const currentUser = _currentUser as ConvexUser | null | undefined;
   const [menuOpen, setMenuOpen] = useState(false);
+  const isAdmin      = useQuery(api.users.isAdmin, currentUser ? {} : "skip") as boolean | undefined;
 
   const close = () => setMenuOpen(false);
 
@@ -181,7 +182,7 @@ export default function Navbar() {
             <div style={{ width: 140, height: 36 }} />
           ) : currentUser !== null ? (
             <>
-              <Link className="nav-btn primary" href="/sessions/new">+ New Session</Link>
+              {isAdmin && (<Link className="nav-btn primary" href="/sessions/new">+ New Session</Link>)}
               <Link className="nav-user-chip" href="/profile">
                 <div className="nav-user-avatar" style={{ background: currentUser.color ?? "#4ECDC4" }}>
                   {currentUser.avatar ?? "🎲"}

@@ -353,7 +353,7 @@ export default function BuzzerPage({ sessionId, teamName, teamColor }: BuzzerPag
           <div className="bz-auth-gate">
             <div className="bz-auth-logo">
               <div className="bz-auth-logo-badge">🎲</div>
-              <span className="bz-auth-logo-text">Tucheze254</span>
+              <span className="bz-auth-logo-text">PlotnPlay</span>
             </div>
             <div className="bz-auth-icon">🔔</div>
             <div className="bz-auth-title">Sign in to Buzz</div>

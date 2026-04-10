@@ -494,6 +494,7 @@ export default function Tucheze254Home() {
   const recentSessions   = recentRaw       as any[] | undefined;
   const activityFeed     = activityRaw     ?? undefined;
   const poll             = pollRaw         as any | null | undefined;
+  const isAdmin          = useQuery(api.users.isAdmin,           skip) as boolean | undefined;
 
   // ── Live countdown (ticks every second client-side) ───────────────────────
   const [secondsLeft, setSecondsLeft] = useState<number>(0);
@@ -565,7 +566,7 @@ export default function Tucheze254Home() {
               <h1>Your crew.<br /><span>Your scores.</span><br />Your legends.</h1>
             )}
 
-            <p>Track every W, every L, every legendary comeback. Tucheze254 is where your game nights live forever. 🎉</p>
+            <p>Track every W, every L, every legendary comeback. PlotnPlay is where your game nights live forever. 🎉</p>
 
             <div className="hero-actions">
               {currentUser ? (
@@ -693,7 +694,11 @@ export default function Tucheze254Home() {
             {/* ── UPCOMING SESSIONS ── */}
             <div className="section-header">
               <div className="section-title">📅 Upcoming Sessions</div>
-              <a href="/sessions/new" className="btn btn-lime" style={{ fontSize:"0.8rem", padding:"8px 16px", textDecoration:"none" }}>+ Schedule</a>
+              {isAdmin && (
+                <a href="/sessions/new" className="btn btn-lime" style={{ fontSize:"0.8rem", padding:"8px 16px", textDecoration:"none", display:"inline-flex", alignItems:"center", gap:6 }}>
+                  + Schedule
+                </a>
+              )}
             </div>
             {upcomingSessions === undefined ? (
               <div className="upcoming-grid">
@@ -942,7 +947,7 @@ export default function Tucheze254Home() {
               <h2>Ready for the next one? 🎉</h2>
               <p>Create a session, invite your crew, and let the games begin.</p>
               <div style={{ display:"flex", gap:12, justifyContent:"center", flexWrap:"wrap" }}>
-                <button className="btn btn-yellow">🎮 Start Session</button>
+                {isAdmin && (<button className="btn btn-yellow">🎮 Start Session</button>)}
                 <button className="btn btn-coral">👥 Invite Players</button>
                 <button className="btn btn-mint">🎲 Pick Random Game</button>
               </div>

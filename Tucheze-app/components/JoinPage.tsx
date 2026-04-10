@@ -297,7 +297,7 @@ export default function JoinPage({ code }: JoinPageProps) {
           <div className="jp-glow" style={{ width:400, height:400, background:"#FF6B6B", bottom:-80, left:-80 }} />
           <Link href="/" className="jp-logo">
             <div className="jp-logo-badge">🎲</div>
-            <span className="jp-logo-text">Tucheze254</span>
+            <span className="jp-logo-text">PlotnPlay</span>
           </Link>
           <div className="jp-card">
             <div className="jp-banner" style={{ minHeight: 120 }}>
@@ -328,7 +328,7 @@ export default function JoinPage({ code }: JoinPageProps) {
           <div className="jp-glow" style={{ width:400, height:400, background:"#FF6B6B", top:-80, right:-80 }} />
           <Link href="/" className="jp-logo">
             <div className="jp-logo-badge">🎲</div>
-            <span className="jp-logo-text">Tucheze254</span>
+            <span className="jp-logo-text">PlotnPlay</span>
           </Link>
           <div className="jp-state-card">
             <div className="jp-state-icon">🔍</div>
@@ -352,7 +352,7 @@ export default function JoinPage({ code }: JoinPageProps) {
           <div className="jp-glow" style={{ width:400, height:400, background:"#FFE135", top:-80, left:-80 }} />
           <Link href="/" className="jp-logo">
             <div className="jp-logo-badge">🎲</div>
-            <span className="jp-logo-text">Tucheze254</span>
+            <span className="jp-logo-text">PlotnPlay</span>
           </Link>
           <div className="jp-state-card">
             <div className="jp-state-icon">🏁</div>
@@ -377,7 +377,7 @@ export default function JoinPage({ code }: JoinPageProps) {
           <div className="jp-glow" style={{ width:400, height:400, background:"#FF9ECD", top:-80, right:-80 }} />
           <Link href="/" className="jp-logo">
             <div className="jp-logo-badge">🎲</div>
-            <span className="jp-logo-text">Tucheze254</span>
+            <span className="jp-logo-text">PlotnPlay</span>
           </Link>
           <div className="jp-state-card">
             <div className="jp-state-icon">🔒</div>
@@ -408,7 +408,7 @@ export default function JoinPage({ code }: JoinPageProps) {
 
         <Link href="/" className="jp-logo">
           <div className="jp-logo-badge">🎲</div>
-          <span className="jp-logo-text">Tucheze254</span>
+          <span className="jp-logo-text">PlotnPlay</span>
         </Link>
 
         <div className="jp-card">
@@ -525,7 +525,7 @@ export default function JoinPage({ code }: JoinPageProps) {
               <div className="jp-auth-prompt">
                 <div className="jp-auth-prompt-title">Sign in to join 🔑</div>
                 <div className="jp-auth-prompt-sub">
-                  You need a Tucheze254 account to join this session. It's free and takes 30 seconds.
+                  You need a PlotnPlay account to join this session. It's free and takes 30 seconds.
                 </div>
                 <div className="jp-auth-btns">
                   <Link
