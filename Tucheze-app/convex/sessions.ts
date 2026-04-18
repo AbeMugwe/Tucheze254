@@ -342,7 +342,20 @@ export const goLive = mutation({
   handler: async (ctx, { sessionId }) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Must be signed in.");
+
+    // Flip session to live
     await ctx.db.patch(sessionId, { status: "live" });
+
+    // Clear previousRank for every player in this session so movement
+    // badges on the leaderboard reset — fresh slate for this session
+    const session = await ctx.db.get(sessionId);
+    if (session) {
+      await Promise.all(
+        session.players.map((p: any) =>
+          ctx.db.patch(p.userId, { previousRank: undefined })
+        )
+      );
+    }
   },
 });
 
@@ -427,59 +440,45 @@ export const complete = mutation({
       }
     }
 
-    // Update win/loss records + ELO for each player using proper ELO formula
-    // K-factor: 32 for <10 games, 24 for 10-30, 16 for 30+
-    const n = ranked.length;
+    // ── Update leaderboard stats for each player ──────────────────────────
+    // Snapshot current rank into previousRank BEFORE updating points,
+    // so the leaderboard can show movement after this session ends.
+    const allRankedUsers = await ctx.db
+      .query("users")
+      .withIndex("by_points")
+      .order("desc")
+      .collect();
 
-    // Need at least 2 players for ELO to make sense — skip ELO update for solo sessions
-    const updateElo = n >= 2;
+    const rankedWithNickname = allRankedUsers.filter((u: any) => u.nickname);
 
     for (let i = 0; i < ranked.length; i++) {
       const p    = ranked[i];
       const user = await ctx.db.get(p.userId);
       if (!user) continue;
 
-      const currentElo   = (user as any).elo ?? 1000;
-      const totalGames   = ((user as any).wins ?? 0) + ((user as any).losses ?? 0);
-      const K            = totalGames < 10 ? 32 : totalGames < 30 ? 24 : 16;
+      const u = user as any;
 
-      let newElo = currentElo;
+      // Snapshot their current leaderboard rank before we change their points
+      const currentRankIndex = rankedWithNickname.findIndex((x: any) => x._id === p.userId);
+      const currentRank      = currentRankIndex >= 0 ? currentRankIndex + 1 : null;
 
-      if (updateElo) {
-        // Against-the-field ELO: compare each player against every other
-        let eloChange = 0;
-        for (let j = 0; j < ranked.length; j++) {
-          if (i === j) continue;
-          const opponent     = ranked[j];
-          const opponentUser = await ctx.db.get(opponent.userId);
-          const opponentElo  = (opponentUser as any)?.elo ?? 1000;
-          const expected     = 1 / (1 + Math.pow(10, (opponentElo - currentElo) / 400));
-          const actual       = i < j ? 1 : 0;
-          eloChange         += K * (actual - expected);
-        }
-        // Normalise by number of opponents so range stays reasonable
-        const rawElo = currentElo + Math.round(eloChange / (n - 1));
-        // Sanitise — never write NaN or Infinity to the DB
-        newElo = isFinite(rawElo) && !isNaN(rawElo) ? Math.max(100, rawElo) : currentElo;
-      }
+      // Rank 1 = win, everyone else = loss
+      const won    = i === 0;
+      const wins   = (u.wins   ?? 0) + (won ? 1 : 0);
+      const losses = (u.losses ?? 0) + (won ? 0 : 1);
+      const total  = wins + losses;
+      const winRate = total > 0 ? Math.round((wins / total) * 100) : 0;
 
-      // Top 3 finish = win, 4th place and below = loss
-      const isPodium  = i < 3;
-      const wins      = ((user as any).wins   ?? 0) + (isPodium ? 1 : 0);
-      const losses    = ((user as any).losses ?? 0) + (isPodium ? 0 : 1);
-      const total     = wins + losses;
-      const winRate   = total > 0 ? Math.round((wins / total) * 100) : 0;
+      // pointsChange = their session score (can be negative)
+      const points = (u.points ?? 0) + p.score;
 
-      // Auto-assign badge based on ELO bracket
-      let badge = (user as any).badge ?? "🆕 Newcomer";
-      if      (newElo >= 1800)  badge = "👑 Legend";
-      else if (newElo >= 1600)  badge = "🔥 Elite";
-      else if (newElo >= 1400)  badge = "⚡ Veteran";
-      else if (newElo >= 1200)  badge = "🎯 Contender";
-      else if (total  >= 5)     badge = "🎮 Regular";
-      else if (total  >= 1)     badge = "🌱 Rising";
-
-      await ctx.db.patch(p.userId, { wins, losses, winRate, elo: newElo, badge });
+      await ctx.db.patch(p.userId, {
+        wins,
+        losses,
+        winRate,
+        points,
+        previousRank: currentRank ?? undefined,
+      });
     }
-  },
-});
+  }
+})

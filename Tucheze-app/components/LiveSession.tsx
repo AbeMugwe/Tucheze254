@@ -45,7 +45,7 @@ interface SessionData {
   playFormat?: "individual" | "teams";
   teams?: Team[];
   inviteCode?: string;
-  createdBy?: string;  // userId of the host — only they can control the session
+  createdBy?: string;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -140,7 +140,7 @@ const css = `
     border:2px solid var(--navy); border-radius:50px; padding:2px 9px; box-shadow:2px 2px 0 var(--navy);
   }
   .ls-board-sub { font-size:0.7rem; font-weight:800; opacity:0.38; margin-bottom:12px; margin-top:-10px; }
-  .ls-board { position:relative; min-height:60px; }
+  .ls-board { position:relative; min-height:60px; max-height:720px; overflow-y:auto; overflow-x:hidden; }
   .ls-player-row { position:absolute; left:0; right:0; transition: top 0.55s cubic-bezier(0.34,1.56,0.64,1); }
   .ls-player-card {
     display:flex; align-items:center; gap:12px;
@@ -170,6 +170,25 @@ const css = `
   .ls-round-history { margin-bottom:16px; display:flex; gap:7px; flex-wrap:wrap; }
   .ls-round-chip { display:flex; align-items:center; gap:5px; border:2.5px solid var(--navy); border-radius:50px; padding:4px 11px; background:white; box-shadow:2px 2px 0 var(--navy); font-size:0.72rem; font-weight:800; }
   .ls-round-chip-winner { display:inline-flex; align-items:center; gap:3px; background:var(--yellow); border-radius:50px; padding:1px 7px; font-size:0.65rem; font-weight:900; border:1.5px solid var(--navy); }
+
+  /* ── STANDINGS TOGGLE ── */
+  .ls-standings-toggle {
+    display:flex; background:rgba(26,26,46,0.07); border-radius:50px;
+    padding:3px; gap:3px; margin-bottom:12px; width:fit-content;
+  }
+  .ls-standings-toggle-btn {
+    font-family:'Nunito',sans-serif; font-weight:800; font-size:0.72rem;
+    padding:5px 14px; border-radius:50px; border:none; cursor:pointer;
+    background:transparent; color:rgba(26,26,46,0.45); transition:all .15s;
+  }
+  .ls-standings-toggle-btn.active {
+    background:var(--navy); color:white;
+  }
+  .ls-standings-toggle-btn.team-active {
+    background:var(--mint); color:var(--navy);
+  }
+  .ls-pts-breakdown { font-size:0.6rem; font-weight:700; opacity:0.45; margin-top:2px; }
+
   .ls-panel-title { font-family:'Fredoka One',cursive; font-size:1.1rem; margin-bottom:8px; }
   .ls-panel-card { border:var(--border); border-radius:16px; box-shadow:var(--shadow-lg); background:white; overflow:hidden; }
   .ls-panel-head { background:var(--navy); padding:9px 14px; font-family:'Fredoka One',cursive; font-size:0.88rem; color:white; display:flex; align-items:center; gap:7px; }
@@ -225,40 +244,22 @@ const css = `
   }
   .ls-invite-copy:hover  { background:rgba(255,255,255,0.2); }
   .ls-invite-copy.copied { background:var(--lime); color:var(--navy); border-color:var(--lime); }
-.ls-toast-wrap {
-  position: fixed;
-  left: 50%;
-  bottom: 20px;
-  transform: translateX(-50%);
-  z-index: 700;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  align-items: center;
-  pointer-events: none;
-}
-
-.ls-toast {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: fit-content;
-  max-width: calc(100vw - 32px);
-  font-family: 'Fredoka One', cursive;
-  font-size: 0.97rem;
-  background: var(--navy);
-  color: white;
-  border: 2.5px solid var(--navy);
-  border-radius: 50px;
-  padding: 9px 22px;
-  box-shadow: var(--shadow-lg);
-  animation: toastIn .35s cubic-bezier(0.34,1.56,0.64,1) forwards, toastOut .3s ease 2.5s forwards;
-  white-space: nowrap;
-}
+  .ls-toast-wrap {
+    position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
+    z-index: 700; display: flex; flex-direction: column; gap: 10px;
+    align-items: center; pointer-events: none;
+  }
+  .ls-toast {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: fit-content; max-width: calc(100vw - 32px);
+    font-family: 'Fredoka One', cursive; font-size: 0.97rem;
+    background: var(--navy); color: white; border: 2.5px solid var(--navy);
+    border-radius: 50px; padding: 9px 22px; box-shadow: var(--shadow-lg);
+    animation: toastIn .35s cubic-bezier(0.34,1.56,0.64,1) forwards, toastOut .3s ease 2.5s forwards;
+    white-space: nowrap;
+  }
   @keyframes toastIn  { from{opacity:0;transform:translateY(16px) scale(0.9)} to{opacity:1;transform:translateY(0) scale(1)} }
   @keyframes toastOut { from{opacity:1} to{opacity:0;transform:translateY(-8px)} }
-
-  /* ── OVERLAYS ── */
   .ls-overlay-bg { position:fixed; inset:0; background:rgba(26,26,46,0.82); z-index:500; display:flex; align-items:center; justify-content:center; animation:fadeIn .25s ease; }
   .ls-overlay-bg.z-600 { z-index:600; }
   @keyframes fadeIn { from{opacity:0} to{opacity:1} }
@@ -280,8 +281,6 @@ const css = `
   .ls-score-pts    { font-family:'Fredoka One',cursive; font-size:0.9rem; color:var(--coral); }
   .ls-next-btn { font-family:'Fredoka One',cursive; font-size:0.98rem; padding:12px 28px; border:var(--border); border-radius:50px; background:var(--coral); color:white; cursor:pointer; box-shadow:var(--shadow); transition:transform .1s, box-shadow .1s; width:100%; }
   .ls-next-btn:hover { transform:translate(-2px,-2px); box-shadow:var(--shadow-lg); }
-
-  /* end screen */
   .ls-end-trophy   { font-size:4.5rem; margin-bottom:10px; animation:wobble 2s ease-in-out infinite; }
   @keyframes wobble { 0%,100%{transform:rotate(-6deg)} 50%{transform:rotate(6deg)} }
   .ls-end-podium   { display:flex; justify-content:center; align-items:flex-end; gap:10px; margin-bottom:20px; }
@@ -309,7 +308,6 @@ const css = `
   .ls-confirm-actions { display:flex; gap:9px; justify-content:center; }
   .ls-confirm-btn { font-family:'Fredoka One',cursive; font-size:0.92rem; padding:10px 22px; border:var(--border); border-radius:50px; cursor:pointer; box-shadow:var(--shadow); transition:transform .1s, box-shadow .1s; }
   .ls-confirm-btn:hover { transform:translate(-1px,-1px); box-shadow:var(--shadow-lg); }
-
   @media (max-width: 768px) {
     .ls-header { padding:13px 16px; }
     .ls-body { grid-template-columns:1fr; padding:18px 13px 80px; gap:16px; }
@@ -338,18 +336,40 @@ function buildTeamScores(teams: Team[], playerScores: PlayerScore[], prevTeams: 
       score, prevRank: prevMap.get(team.id)?.rank ?? 0, rank: 0, delta: null, members };
   }));
 }
+
+// Always initialise from the full session.players list so no player is ever missing
 function freshScores(players: Player[]): PlayerScore[] {
   return assignRanks(
     players.map((p) => ({
       ...p,
-      score: p.score ?? 0,
+      score:    p.score    ?? 0,
       prevRank: 0,
-      rank: p.rank ?? 0,
-      delta: null,
+      rank:     p.rank     ?? 0,
+      delta:    null,
     }))
   );
 }
 
+function mergePlayersIntoScores(
+  scores: PlayerScore[],
+  players: Player[],
+  trustIncomingScores = false
+): PlayerScore[] {
+  const existing = new Map(scores.map((p) => [p.id, p]));
+  // Always iterate over the full players list — never drop anyone
+  const merged = players.map((player) => {
+    const prev = existing.get(player.id);
+    if (trustIncomingScores) {
+      return {
+        ...(prev ?? { prevRank: 0, rank: 0, delta: null }),
+        ...player,
+        score: player.score ?? 0,
+      };
+    }
+    return prev ?? { ...player, score: 0, prevRank: 0, rank: 0, delta: null };
+  });
+  return assignRanks(merged);
+}
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
@@ -367,7 +387,8 @@ function Leaderboard({ scores, subtitle }: { scores: PlayerScore[]; subtitle?: s
   return (
     <>
       {subtitle && <div className="ls-board-sub">{subtitle}</div>}
-      <div className="ls-board" style={{ height: sorted.length * ROW_H }}>
+      <div style={{ maxHeight: 720, overflowY: "auto", overflowX: "hidden", borderRadius: 12 }}>
+        <div className="ls-board" style={{ height: sorted.length * ROW_H }}>
         {sorted.map(p => {
           const bg = RANK_BG[(p.rank-1) % RANK_BG.length];
           const rc = RANK_COLORS[(p.rank-1) % RANK_COLORS.length];
@@ -385,6 +406,43 @@ function Leaderboard({ scores, subtitle }: { scores: PlayerScore[]; subtitle?: s
             </div>
           );
         })}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// Leaderboard variant that shows a points breakdown line under the name
+function LeaderboardWithBreakdown({ scores, subtitle, getBreakdown }: {
+  scores: PlayerScore[];
+  subtitle?: string;
+  getBreakdown: (p: PlayerScore) => string;
+}) {
+  const sorted = [...scores].sort((a,b) => a.rank - b.rank);
+  return (
+    <>
+      {subtitle && <div className="ls-board-sub">{subtitle}</div>}
+      <div className="ls-board" style={{ height: sorted.length * ROW_H }}>
+        {sorted.map(p => {
+          const bg = RANK_BG[(p.rank-1) % RANK_BG.length];
+          const rc = RANK_COLORS[(p.rank-1) % RANK_COLORS.length];
+          return (
+            <div key={p.id} className="ls-player-row" style={{ top: (p.rank-1)*ROW_H, height: ROW_H-8 }}>
+              <div className="ls-player-card" style={{ background: bg, height:"100%" }}>
+                <div className="ls-rank-badge" style={{ color: rc }}>{rankMedal(p.rank)}</div>
+                <div className="ls-player-avatar" style={{ background: p.color }}>{p.emoji}</div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div className="ls-player-name">
+                    {p.name}{p.prevRank > p.rank && p.prevRank !== 0 && <span className="ls-rank-up"> ↑{p.prevRank-p.rank}</span>}
+                  </div>
+                  <div className="ls-pts-breakdown">{getBreakdown(p)}</div>
+                </div>
+                {p.delta !== null && <span key={`${p.id}-${p.score}`} className="ls-score-delta">{p.delta>0?"+":""}{p.delta}</span>}
+                <div className="ls-player-score">{p.score}</div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </>
   );
@@ -395,7 +453,8 @@ function TeamLeaderboard({ teamScores, subtitle }: { teamScores: TeamScore[]; su
   return (
     <>
       {subtitle && <div className="ls-board-sub">{subtitle}</div>}
-      <div className="ls-board" style={{ height: sorted.length * TEAM_ROW_H }}>
+      <div style={{ maxHeight: 720, overflowY: "auto", overflowX: "hidden", borderRadius: 12 }}>
+  <div className="ls-board" style={{ height: sorted.length * TEAM_ROW_H }}>
         {sorted.map(t => {
           const bg = RANK_BG[(t.rank-1) % RANK_BG.length];
           const rc = RANK_COLORS[(t.rank-1) % RANK_COLORS.length];
@@ -423,6 +482,7 @@ function TeamLeaderboard({ teamScores, subtitle }: { teamScores: TeamScore[]; su
             </div>
           );
         })}
+        </div>
       </div>
     </>
   );
@@ -660,85 +720,53 @@ const DEMO_SESSION: SessionData = {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function LiveSession({ sessionData, convexSession, }: { sessionData?: SessionData; convexSession: any; }) {
-  const router          = useRouter();
-  const session         = sessionData ?? DEMO_SESSION;
+export default function LiveSession({ sessionData, convexSession }: { sessionData?: SessionData; convexSession: any; }) {
+  const router      = useRouter();
+  const session     = sessionData ?? DEMO_SESSION;
 
-  // ── Host check ───────────────────────────────────────────────────────────
   const currentUser = useQuery(api.users.currentUser) as any;
-  // isHost = true if logged-in user is the one who created the session
-  // Also true for the demo session (no createdBy) so demo still works fully
-  const isHost = !session.createdBy || currentUser?._id === session.createdBy;
+  const isHost      = !session.createdBy || currentUser?._id === session.createdBy;
+  const hasTeams    = session.playFormat === "teams" && (session.teams?.length ?? 0) > 0;
+  const isMultiGame = session.games.length > 1;
 
-  const hasTeams        = session.playFormat === "teams" && (session.teams?.length ?? 0) > 0;
-  const isMultiGame     = session.games.length > 1;
   const completeSession = useMutation(api.sessions.complete);
+  const recordResult    = useMutation(api.users.recordResult);
 
   // ── Per-round score sheets ────────────────────────────────────────────────
   const [currentRound, setCurrentRound] = useState(0);
-  const [roundScores, setRoundScores]   = useState<PlayerScore[][]>(() =>
+
+  // Initialise every round from the full session.players — fixes missing player bug
+  const [roundScores, setRoundScores] = useState<PlayerScore[][]>(() =>
     session.games.map(() => freshScores(session.players))
   );
-  
-  
-  
-  function mergePlayersIntoScores(
-  scores: PlayerScore[],
-  players: Player[],
-  trustIncomingScores = false
-): PlayerScore[] {
-  const existing = new Map(scores.map((p) => [p.id, p]));
-  const merged = players.map((player) => {
-    const prev = existing.get(player.id);
-    if (trustIncomingScores) {
-      // Guest path: always use the score from Convex
-      return {
-        ...(prev ?? { prevRank: 0, rank: 0, delta: null }),
-        ...player,
-        score: player.score ?? 0,
-      };
-    }
-    // Host path: keep local score state, only add new players at 0
-    return prev ?? {
-      ...player,
-      score: 0,
-      prevRank: 0,
-      rank: 0,
-      delta: null,
-    };
-  });
-  return assignRanks(merged);
-}
 
-  useEffect(() => {
-  setRoundScores((prev) => {
+  function mergeAll(prev: PlayerScore[][], players: Player[], trust: boolean): PlayerScore[][] {
     return session.games.map((_, roundIndex) => {
       const existingRound = prev[roundIndex] ?? [];
-      return mergePlayersIntoScores(existingRound, session.players, !isHost);
+      return mergePlayersIntoScores(existingRound, players, trust);
     });
-  });
-}, [session.players, session.games, isHost]);
+  }
 
-  const [roundResults, setRoundResults] = useState<RoundResult[]>([]);
+  useEffect(() => {
+    setRoundScores(prev => mergeAll(prev, session.players, !isHost));
+  }, [session.players, session.games, isHost]);
+
+  const [roundResults, setRoundResults]   = useState<RoundResult[]>([]);
   const [pendingResult, setPendingResult] = useState<RoundResult | null>(null);
 
-  // Current round's scores
   const curScores = roundScores[currentRound] ?? freshScores(session.players);
 
   // ── Per-round team mode ───────────────────────────────────────────────────
-  // Resolves whether the CURRENT round runs as teams or individual,
-  // based on the game's gameType and whether teams were set up at all.
   const getRoundIsTeams = useCallback((roundIndex: number): boolean => {
     if (!hasTeams) return false;
     const gt = session.games[roundIndex]?.gameType ?? "both";
-    if (gt === "individual") return false;   // override: always individual
-    if (gt === "team")       return true;    // override: always team
-    return true; // "both" → use session's team setup
+    if (gt === "individual") return false;
+    if (gt === "team")       return true;
+    return true;
   }, [hasTeams, session.games]);
 
   const isTeams = getRoundIsTeams(currentRound);
 
-  // Team scores for current round
   const [teamScores, setTeamScores] = useState<TeamScore[]>(() =>
     hasTeams ? buildTeamScores(session.teams!, freshScores(session.players), []) : []
   );
@@ -747,21 +775,38 @@ export default function LiveSession({ sessionData, convexSession, }: { sessionDa
     setTeamScores(prev => buildTeamScores(session.teams!, curScores, prev));
   }, [curScores, hasTeams, session.teams]);
 
-  // Aggregate totals across ALL rounds
+  // ── Total scores: correctly sums per-player across ALL rounds ────────────
+  // For individual rounds: each player's score goes directly to their total.
+  // For team rounds: each player's score goes to their total (team points are
+  // awarded per-member already, so summing roundScores is always correct).
   const totalScores: PlayerScore[] = (() => {
     const map = new Map<string, number>();
+    // Seed from the full players list so nobody is missing
     session.players.forEach(p => map.set(p.id, 0));
-    roundScores.forEach(rnd => rnd.forEach(p => map.set(p.id, (map.get(p.id)??0) + p.score)));
-    return assignRanks(session.players.map(p => ({...p, score: map.get(p.id)??0, prevRank:0, rank:0, delta:null})));
+    roundScores.forEach(rnd => rnd.forEach(p => map.set(p.id, (map.get(p.id) ?? 0) + p.score)));
+    return assignRanks(session.players.map(p => ({
+      ...p, score: map.get(p.id) ?? 0, prevRank: 0, rank: 0, delta: null,
+    })));
   })();
+
+  // Team totals for overall standings (team view)
   const totalTeamScores = hasTeams ? buildTeamScores(session.teams!, totalScores, []) : [];
 
-  const [toasts, setToasts]           = useState<Toast[]>([]);
-  const [showEnd, setShowEnd]         = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [saving, setSaving]           = useState(false);
+  // Per-round individual scores for breakdown tooltip
+  const perRoundMap = useCallback((playerId: string): number[] =>
+    roundScores.map(rnd => rnd.find(p => p.id === playerId)?.score ?? 0)
+  , [roundScores]);
+
+  // ── Standings view toggle (individual / team) ─────────────────────────────
+  const [standingsView, setStandingsView] = useState<"individual" | "team">("individual");
+
+  // ── Misc state ────────────────────────────────────────────────────────────
+  const [toasts, setToasts]             = useState<Toast[]>([]);
+  const [showEnd, setShowEnd]           = useState(false);
+  const [showConfirm, setShowConfirm]   = useState(false);
+  const [saving, setSaving]             = useState(false);
   const [inviteCopied, setInviteCopied] = useState(false);
-  const [showBuzzer, setShowBuzzer]   = useState(false);
+  const [showBuzzer, setShowBuzzer]     = useState(false);
   const toastId   = useRef(0);
   const lastToast = useRef("");
 
@@ -774,70 +819,49 @@ export default function LiveSession({ sessionData, convexSession, }: { sessionDa
     setTimeout(() => setToasts(p => p.filter(t => t.id !== id)), 2800);
   }, []);
 
-  const updateScores = useMutation(api.sessions.updateScores); 
+  const updateScores = useMutation(api.sessions.updateScores);
 
   useEffect(() => {
-  if (!isHost || !session.convexId) return;
+    if (!isHost || !session.convexId) return;
+    updateScores({
+      sessionId: session.convexId as any,
+      players: curScores.map((p) => ({
+        userId: p.id as any, nickname: p.name, avatar: p.emoji,
+        color: p.color, score: p.score, rank: p.rank,
+      })),
+    }).catch(console.error);
+  }, [isHost, session.convexId, curScores, updateScores]);
 
-  updateScores({
-    sessionId: session.convexId as any,
-    players: curScores.map((p) => ({
-      userId: p.id as any,
-      nickname: p.name,
-      avatar: p.emoji,
-      color: p.color,
-      score: p.score,
-      rank: p.rank,
-    })),
-  }).catch(console.error);
-}, [isHost, session.convexId, curScores, updateScores]);
-
-// Sync end/round state for spectators from Convex session status
-useEffect(() => {
-  if (isHost || !convexSession) return;
-
-  // Show end screen when host completes the session
-  if (convexSession.status === "completed" && !showEnd) {
-    // Rebuild final scores from Convex players
-    const finalPlayers: PlayerScore[] = assignRanks(
-      (convexSession.players ?? []).map((p: any) => ({
-        id:       p.userId,
-        name:     p.nickname ?? "Player",
-        emoji:    p.avatar   ?? "🎲",
-        color:    p.color    ?? "#4ECDC4",
-        score:    p.score    ?? 0,
-        prevRank: 0,
-        rank:     p.rank     ?? 0,
-        delta:    null,
-      }))
-    );
-    // Push into round 0 scores so totalScores computes correctly
-    setRoundScores([finalPlayers]);
-    setShowEnd(true);
-  }
-
-  // Show round-end modal when host ends a round (roundWinners grows)
-  if (convexSession.roundWinners && !showEnd) {
-    const serverRoundCount = convexSession.roundWinners.length;
-    const localRoundCount  = roundResults.length;
-    if (serverRoundCount > localRoundCount) {
-      const rw = convexSession.roundWinners[serverRoundCount - 1];
-      const result: RoundResult = {
-        roundIndex:   rw.gameIndex,
-        game:         session.games[rw.gameIndex] ?? { name: rw.gameName, emoji: rw.gameEmoji },
-        winnerName:   rw.nickname,
-        winnerEmoji:  rw.avatar,
-        winnerColor:  rw.color,
-      };
-      setRoundResults(prev => [...prev, result]);
-      setPendingResult(result);
-      setCurrentRound(serverRoundCount); // advance to next round
+  // Sync end/round state for spectators
+  useEffect(() => {
+    if (isHost || !convexSession) return;
+    if (convexSession.status === "completed" && !showEnd) {
+      const finalPlayers: PlayerScore[] = assignRanks(
+        (convexSession.players ?? []).map((p: any) => ({
+          id: p.userId, name: p.nickname ?? "Player", emoji: p.avatar ?? "🎲",
+          color: p.color ?? "#4ECDC4", score: p.score ?? 0,
+          prevRank: 0, rank: p.rank ?? 0, delta: null,
+        }))
+      );
+      setRoundScores([finalPlayers]);
+      setShowEnd(true);
     }
-  }
-}, [convexSession, isHost, showEnd, roundResults.length]);
-
-
-
+    if (convexSession.roundWinners && !showEnd) {
+      const serverRoundCount = convexSession.roundWinners.length;
+      const localRoundCount  = roundResults.length;
+      if (serverRoundCount > localRoundCount) {
+        const rw = convexSession.roundWinners[serverRoundCount - 1];
+        const result: RoundResult = {
+          roundIndex: rw.gameIndex,
+          game:       session.games[rw.gameIndex] ?? { name: rw.gameName, emoji: rw.gameEmoji },
+          winnerName: rw.nickname, winnerEmoji: rw.avatar, winnerColor: rw.color,
+        };
+        setRoundResults(prev => [...prev, result]);
+        setPendingResult(result);
+        setCurrentRound(serverRoundCount);
+      }
+    }
+  }, [convexSession, isHost, showEnd, roundResults.length]);
 
   const handleAddPoints = useCallback((playerIds: string[], pts: number) => {
     if (!isHost) return;
@@ -864,7 +888,6 @@ useEffect(() => {
     if (!isHost) return;
     const game = session.games[currentRound];
     const rnd  = roundScores[currentRound];
-    const isLast = currentRound === session.games.length - 1;
     let winnerName: string, winnerEmoji: string, winnerColor: string;
     if (isTeams && session.teams) {
       const sorted = session.teams.map(t => ({
@@ -889,57 +912,56 @@ useEffect(() => {
     setSaving(true);
     try {
       if (session.convexId) {
-        // Compute final scores fresh — never rely on stale totalScores closure.
-        // This ensures the last round's points are always included.
+        // Recompute final totals fresh
         const scoreMap = new Map<string, number>();
         session.players.forEach(p => scoreMap.set(p.id, 0));
         roundScores.forEach(rnd => rnd.forEach(p => scoreMap.set(p.id, (scoreMap.get(p.id) ?? 0) + p.score)));
         const freshTotals = assignRanks(
           session.players.map(p => ({ ...p, score: scoreMap.get(p.id) ?? 0, prevRank: 0, rank: 0, delta: null }))
         );
-
-        const freshTeamTotals = hasTeams
-          ? buildTeamScores(session.teams!, freshTotals, [])
-          : [];
-
+        const freshTeamTotals = hasTeams ? buildTeamScores(session.teams!, freshTotals, []) : [];
         const winningTeam = hasTeams ? [...freshTeamTotals].sort((a,b) => a.rank - b.rank)[0] : null;
 
-        // Build per-game round winners
         const roundWinners = session.games.map((game, idx) => {
           const scores = roundScores[idx] ?? [];
           const top = [...scores].sort((a, b) => b.score - a.score)[0];
           if (!top) return null;
-          return {
-            gameIndex: idx,
-            gameName:  game.name,
-            gameEmoji: game.emoji,
-            nickname:  top.name,
-            avatar:    top.emoji,
-            color:     top.color,
-            score:     top.score,
-          };
+          return { gameIndex: idx, gameName: game.name, gameEmoji: game.emoji,
+            nickname: top.name, avatar: top.emoji, color: top.color, score: top.score };
         }).filter(Boolean) as any[];
 
         await completeSession({
           sessionId: session.convexId as any,
           players: freshTotals.map(p => ({
-            userId:   p.id as any,
-            nickname: p.name,
-            avatar:   p.emoji,
-            color:    p.color,
-            score:    p.score,
-            rank:     p.rank,
+            userId: p.id as any, nickname: p.name, avatar: p.emoji,
+            color: p.color, score: p.score, rank: p.rank,
           })),
           winningTeam: winningTeam
-            ? { name: winningTeam.name, emoji: winningTeam.emoji, color: winningTeam.color, memberNicknames: winningTeam.members.map(m => m.name) }
+            ? { name: winningTeam.name, emoji: winningTeam.emoji, color: winningTeam.color,
+                memberNicknames: winningTeam.members.map(m => m.name) }
             : undefined,
           roundWinners: roundWinners.length > 0 ? roundWinners : undefined,
           totalRounds: session.games.length,
         });
+
+        // ── Push final scores to the leaderboard ──────────────────────────
+        // winner = player ranked 1st; everyone else is a loss
+        // pointsChange = their session score (can be negative if they had deductions)
+        const leaderboardUpdates = freshTotals.map(p => ({
+          userId:       p.id,
+          won:          p.rank === 1,
+          pointsChange: p.score,
+        }));
+
+        await Promise.allSettled(
+          leaderboardUpdates.map(({ userId, won, pointsChange }) =>
+            recordResult({ userId: userId as any, won, pointsChange })
+          )
+        );
       }
     } catch (e) { console.error("Failed to save session:", e); }
     finally { setSaving(false); }
-  }, [session, hasTeams, roundScores, completeSession, isHost]);
+  }, [session, hasTeams, roundScores, completeSession, recordResult, isHost]);
 
   const handleAdvanceRound = useCallback(() => {
     setPendingResult(null);
@@ -956,23 +978,24 @@ useEffect(() => {
     setRoundResults([]); setCurrentRound(0); setShowEnd(false);
   };
 
-  const curGame  = session.games[currentRound];
-  const isLast   = currentRound === session.games.length - 1;
-  const curPts   = curScores.reduce((s,p)=>s+p.score, 0);
-  const totalPts = totalScores.reduce((s,p)=>s+p.score, 0);
+  const curGame   = session.games[currentRound];
+  const isLast    = currentRound === session.games.length - 1;
+  const curPts    = curScores.reduce((s,p)=>s+p.score, 0);
+  const totalPts  = totalScores.reduce((s,p)=>s+p.score, 0);
   const leadEmoji = isTeams
     ? [...totalTeamScores].sort((a,b)=>a.rank-b.rank)[0]?.emoji ?? ""
     : [...totalScores].sort((a,b)=>a.rank-b.rank)[0]?.emoji ?? "";
 
-  // Label shown in header/round-pill when mode switches mid-session
   const roundModeLabel = (() => {
     const gt = curGame?.gameType ?? "both";
-    if (!hasTeams)          return null;                    // no teams configured — never show
-    if (gt === "individual") return "🧍 Individual Round";  // forced individual
-    if (gt === "team")       return "🫂 Team Round";        // forced team
-    return null;                                            // "both" — no label needed
+    if (!hasTeams) return null;
+    if (gt === "individual") return "🧍 Individual Round";
+    if (gt === "team")       return "🫂 Team Round";
+    return null;
   })();
 
+  // Only show the toggle when we actually have mixed rounds (some individual, some team)
+  const hasMixedRounds = hasTeams && session.games.some(g => g.gameType === "individual" || g.gameType === "both");
 
   return (
     <>
@@ -998,7 +1021,6 @@ useEffect(() => {
               )}
             </div>
 
-            {/* Invite link strip — only shown when session has a code */}
             {session.inviteCode && (
               <div className="ls-invite-strip">
                 <div>
@@ -1057,38 +1079,43 @@ useEffect(() => {
             </div>
 
             <div className="ls-header-btns">
-              {/* Buzzer — host only */}
               {isHost ? (
-    isMultiGame ? (
-      <>
-        <button className="ls-end-round-btn" onClick={handleEndRound}>
-          {isLast ? "🏁 End Last Round" : `✅ End Round ${currentRound + 1}`}
-        </button>
-        <button className="ls-end-btn" onClick={() => setShowConfirm(true)}>
-          End Session
-        </button>
-      </>
-    ) : (
-      <button className="ls-end-btn" onClick={() => setShowConfirm(true)}>
-        🏁 End Session
-      </button>
-    )
-  ) : (
-    <div
-      style={{
-        background: "rgba(255,255,255,0.08)",
-        border: "1.5px solid rgba(255,255,255,0.15)",
-        borderRadius: 12,
-        padding: "9px 14px",
-        fontSize: "0.75rem",
-        fontWeight: 800,
-        color: "rgba(255,255,255,0.7)",
-      }}
-    >
-      👀 Spectating live
-    </div>
-  )}
-</div>
+                isMultiGame ? (
+                  <>
+                    {session.convexId && (
+                      <button className="ls-end-round-btn" style={{ background:"#4ECDC4", borderColor:"#4ECDC4" }} onClick={() => setShowBuzzer(true)}>
+                        🔔 Buzzer
+                      </button>
+                    )}
+                    <button className="ls-end-round-btn" onClick={handleEndRound}>
+                      {isLast ? "🏁 End Last Round" : `✅ End Round ${currentRound + 1}`}
+                    </button>
+                    <button className="ls-end-btn" onClick={() => setShowConfirm(true)}>
+                      End Session
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {session.convexId && (
+                      <button className="ls-end-round-btn" style={{ background:"#4ECDC4", borderColor:"#4ECDC4" }} onClick={() => setShowBuzzer(true)}>
+                        🔔 Buzzer
+                      </button>
+                    )}
+                    <button className="ls-end-btn" onClick={() => setShowConfirm(true)}>
+                      🏁 End Session
+                    </button>
+                  </>
+                )
+              ) : (
+                <div style={{
+                  background:"rgba(255,255,255,0.08)", border:"1.5px solid rgba(255,255,255,0.15)",
+                  borderRadius:12, padding:"9px 14px", fontSize:"0.75rem", fontWeight:800,
+                  color:"rgba(255,255,255,0.7)",
+                }}>
+                  👀 Spectating live
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -1120,15 +1147,50 @@ useEffect(() => {
                   </div>
                 )}
 
-                {/* Overall standings */}
+                {/* Overall standings with individual/team toggle */}
                 <div className="ls-board-title" style={{ marginTop: 24 }}>
                   🏆 Overall Standings
                   <span className="ls-board-title-pill">All Rounds</span>
                 </div>
-                {isTeams
-                  ? <TeamLeaderboard teamScores={totalTeamScores} subtitle="Cumulative across all rounds" />
-                  : <Leaderboard scores={totalScores} subtitle="Cumulative across all rounds" />
-                }
+
+                {/* Toggle — only shown when session has mixed round types */}
+                {hasMixedRounds && (
+                  <div className="ls-standings-toggle">
+                    <button
+                      className={`ls-standings-toggle-btn${standingsView === "individual" ? " active" : ""}`}
+                      onClick={() => setStandingsView("individual")}
+                    >
+                      👤 Individual
+                    </button>
+                    <button
+                      className={`ls-standings-toggle-btn${standingsView === "team" ? " team-active" : ""}`}
+                      onClick={() => setStandingsView("team")}
+                    >
+                      🫂 Teams
+                    </button>
+                  </div>
+                )}
+
+                {standingsView === "individual" || !hasMixedRounds ? (
+                  // Individual overall — shows each player's cumulative score with breakdown
+                  <LeaderboardWithBreakdown
+                    scores={totalScores}
+                    subtitle="Each player's total across all rounds"
+                    getBreakdown={(p) => {
+                      const rounds = perRoundMap(p.id);
+                      return rounds.map((s, i) => {
+                        const g = session.games[i];
+                        return `${g?.emoji ?? ""} ${s}`;
+                      }).join("  ·  ");
+                    }}
+                  />
+                ) : (
+                  // Team overall — shows team totals (sum of all member scores across all rounds)
+                  <TeamLeaderboard
+                    teamScores={totalTeamScores}
+                    subtitle="Team totals across team rounds"
+                  />
+                )}
               </>
             ) : (
               <>
@@ -1156,8 +1218,7 @@ useEffect(() => {
             ) : (
               <div style={{
                 border:"3px solid rgba(255,255,255,0.15)", borderRadius:18,
-                padding:"28px 20px", textAlign:"center",
-                background:"rgba(255,255,255,0.04)",
+                padding:"28px 20px", textAlign:"center", background:"rgba(255,255,255,0.04)",
               }}>
                 <div style={{ fontSize:"2rem", marginBottom:10 }}>👀</div>
                 <div style={{ fontFamily:"'Fredoka One',cursive", fontSize:"1rem", color:"white", marginBottom:6 }}>

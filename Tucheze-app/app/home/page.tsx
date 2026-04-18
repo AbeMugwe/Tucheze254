@@ -14,7 +14,7 @@ interface ConvexUser {
   nickname: string;
   avatar: string;
   color: string;
-  elo: number;
+  points: number;
   wins: number;
   winRate: number;
   badge: string;
@@ -644,14 +644,14 @@ export default function Tucheze254Home() {
             {/* ── LEADERBOARD ── */}
             <div className="section-header">
               <div className="section-title">
-                🏆 Leaderboard <span className="section-pill">ELO Rankings</span>
+                🏆 Leaderboard <span className="section-pill">Point Rankings</span>
               </div>
               <a href="/leaderboard" className="btn btn-navy" style={{ fontSize:"0.8rem", padding:"8px 16px", textDecoration:"none" }}>View Full →</a>
             </div>
             <div className="leaderboard-card">
               <div className="lb-header">
                 <div className="lb-title">🎖️ Top Players</div>
-                <div style={{ fontSize:"0.72rem", fontWeight:800, color:"rgba(255,255,255,0.4)" }}>ELO · Wins · Win Rate</div>
+                <div style={{ fontSize:"0.72rem", fontWeight:800, color:"rgba(255,255,255,0.4)" }}>Points · Wins · Win Rate</div>
               </div>
 
               {leaderboard === undefined || leaderboard === null ? (
@@ -662,31 +662,34 @@ export default function Tucheze254Home() {
                 </div>
               ) : (
                 (leaderboard as any[]).slice(0, 8).map((p: any, i: number) => {
-                  const elo = p.elo ?? 1000;
-                  const eloColor = elo >= 1800 ? "#FFE135" : elo >= 1600 ? "#FF6B6B" : elo >= 1400 ? "#4ECDC4" : elo >= 1200 ? "#FF9ECD" : "#C8F135";
-                  const isMe = (currentUser as any)?._id === p._id;
-                  return (
-                    <div key={p._id} className={`lb-row${i===0?" gold":""}`}
-                      style={isMe ? { borderLeft:"4px solid #4ECDC4", background:"#f0fdfb" } : {}}>
-                      <div className={`lb-rank rank-${i+1}`}>{(RANK_MEDALS as any)[i] ?? `#${i+1}`}</div>
-                      <div className="lb-player">
-                        <div className="lb-avatar" style={{ background: p.color }}>{p.avatar}</div>
-                        <div>
-                          <div className="lb-name">
-                            {p.nickname}
-                            {isMe && <span style={{ fontSize:"0.6rem", fontWeight:900, background:"#4ECDC4", color:"#1a1a2e", borderRadius:50, padding:"1px 6px", marginLeft:6 }}>You</span>}
-                          </div>
-                          <div className="lb-badge">{p.badge ?? "🌱 Rising"}</div>
-                        </div>
-                      </div>
-                      <div className="lb-elo" style={{ color: eloColor, fontWeight: 800 }}>{elo}</div>
-                      <div className="lb-wins">{p.wins ?? 0}🏅</div>
-                      <div className="lb-rate">
-                        <div className="rate-bar"><div className="rate-fill" style={{ width:`${p.winRate ?? 0}%` }} /></div>
-                        <div className="rate-txt">{p.winRate ?? 0}%</div>
-                      </div>
-                    </div>
-                  );
+                  const points  = p.points ?? 0;
+const ptsSign = points > 0 ? "+" : "";
+const ptsColor = points >= 100 ? "#0F6E56" : points >= 0 ? "#1a1a2e" : "#993C1D";
+const isMe    = (currentUser as any)?._id === p._id;
+const games   = (p.wins ?? 0) + (p.losses ?? 0);
+const ptTag   = points >= 400 ? "G.O.A.T" : points >= 200 ? "Elite" : points >= 100 ? "Solid" : points >= 20 ? "Rising" : points > 0 ? "Legend in training" : points === 0 ? "Just started" : points >= -50 ? "Meh..." : points >= -100 ? "Trash" : points >= -150 ? "Are you even playing?" : "Delete the account";
+return (
+  <div key={p._id} className={`lb-row${i===0?" gold":""}`}
+    style={isMe ? { borderLeft:"4px solid #4ECDC4", background:"#f0fdfb" } : {}}>
+    <div className={`lb-rank rank-${i+1}`}>{(RANK_MEDALS as any)[i] ?? `#${i+1}`}</div>
+    <div className="lb-player">
+      <div className="lb-avatar" style={{ background: p.color }}>{p.avatar}</div>
+      <div>
+        <div className="lb-name">
+          {p.nickname}
+          {isMe && <span style={{ fontSize:"0.6rem", fontWeight:900, background:"#4ECDC4", color:"#1a1a2e", borderRadius:50, padding:"1px 6px", marginLeft:6 }}>You</span>}
+        </div>
+        <div className="lb-badge">{ptTag}</div>
+      </div>
+    </div>
+    <div className="lb-elo" style={{ color: ptsColor, fontWeight: 800 }}>{ptsSign}{points}</div>
+    <div className="lb-wins">{p.wins ?? 0}🏅</div>
+    <div className="lb-rate">
+      <div className="rate-bar"><div className="rate-fill" style={{ width:`${p.winRate ?? 0}%` }} /></div>
+      <div className="rate-txt">{p.winRate ?? 0}%</div>
+    </div>
+  </div>
+);
                 })
               )}
             </div>

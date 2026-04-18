@@ -4,16 +4,6 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
-/**
- * Returns the full profile of the currently signed-in user,
- * or null if they are not authenticated.
- *
- * Usage in components:
- *   const currentUser = useQuery(api.users.currentUser);
- *   // undefined  → still loading
- *   // null       → not signed in
- *   // { ... }    → signed in, full profile
- */
 export const currentUser = query({
   args: {},
   handler: async (ctx) => {
@@ -23,15 +13,9 @@ export const currentUser = query({
   },
 });
 
-/**
- * Checks whether an email is already registered.
- * Call this in SignUp before attempting signIn({ flow: "signUp" })
- * to prevent duplicate accounts.
- */
 export const checkEmailExists = query({
   args: { email: v.string() },
   handler: async (ctx, { email }) => {
-    // Convex Auth stores credentials in authAccounts, not our custom users table
     const account = await ctx.db
       .query("authAccounts")
       .withIndex("providerAndAccountId", (q) =>
@@ -42,27 +26,20 @@ export const checkEmailExists = query({
   },
 });
 
-/**
- * Returns all users with a completed profile (has nickname).
- * Used by NewSession to populate the player picker with real Convex IDs.
- */
 export const list = query({
   args: {},
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) return [];
     const all = await ctx.db.query("users").collect();
-    // Only return users who have completed their profile
     return all.filter((u) => u.nickname);
   },
 });
 
 /**
- * Returns the top N players sorted by ELO descending.
- * Used by the leaderboard on the home page.
- *
- * Usage:
- *   const leaderboard = useQuery(api.users.leaderboard, { limit: 10 });
+ * Returns all ranked players sorted by points descending.
+ * Each player includes their currentRank (1-based) so the frontend
+ * can compute movement against previousRank.
  */
 export const leaderboard = query({
   args: { limit: v.optional(v.number()) },
@@ -72,34 +49,36 @@ export const leaderboard = query({
 
     const users = await ctx.db
       .query("users")
-      .withIndex("by_elo")
+      .withIndex("by_points")
       .order("desc")
       .collect();
 
-    // Only return users with a completed profile
+    // Only users with a completed profile
     const ranked = users.filter((u: any) => u.nickname);
-    return limit ? ranked.slice(0, limit) : ranked;
+
+    // Attach currentRank so frontend can compute movement
+    const withRank = ranked.map((u: any, i: number) => ({
+      ...u,
+      points:      u.points      ?? 0,
+      wins:        u.wins        ?? 0,
+      losses:      u.losses      ?? 0,
+      winRate:     u.winRate     ?? 0,
+      previousRank: u.previousRank ?? (i + 1), // default: no movement
+      currentRank: i + 1,
+    }));
+
+    return limit ? withRank.slice(0, limit) : withRank;
   },
 });
 
-// ─── Admin check ─────────────────────────────────────────────────────────────
+// ─── Admin check ──────────────────────────────────────────────────────────────
 
-/**
- * Returns true if the current user's email is in the ADMIN_EMAILS
- * environment variable (comma-separated list set in Convex dashboard).
- *
- * Set it via:
- *   npx convex env set ADMIN_EMAILS "alice@gmail.com,bob@gmail.com"
- *
- * Or in the Convex dashboard → Settings → Environment Variables.
- */
 export const isAdmin = query({
   args: {},
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) return false;
 
-    // Get the user's email from authAccounts (where Convex Auth stores it)
     const account = await ctx.db
       .query("authAccounts")
       .filter((q) => q.eq(q.field("userId"), userId))
@@ -108,8 +87,6 @@ export const isAdmin = query({
     if (!account?.providerAccountId) return false;
 
     const email = account.providerAccountId.toLowerCase().trim();
-
-    // Read the comma-separated admin email list from env
     const raw = process.env.ADMIN_EMAILS ?? "";
     const adminEmails = raw
       .split(",")
@@ -120,15 +97,8 @@ export const isAdmin = query({
   },
 });
 
+// ─── Mutations ────────────────────────────────────────────────────────────────
 
-/**
- * Creates the user profile row after a successful signup.
- * Call this immediately after signIn("password", { flow: "signUp", ... }).
- *
- * Usage in SignUp.tsx:
- *   const createProfile = useMutation(api.users.createProfile);
- *   await createProfile({ nickname, avatar, color, playStyle });
- */
 export const createProfile = mutation({
   args: {
     nickname:  v.string(),
@@ -141,31 +111,24 @@ export const createProfile = mutation({
     if (!userId) throw new Error("Not authenticated");
 
     const existing = await ctx.db.get(userId as any);
-
-    if (!existing) {
-      // Auth row not written yet — throw so caller can retry
-      throw new Error("AUTH_ROW_NOT_READY");
-    }
+    if (!existing) throw new Error("AUTH_ROW_NOT_READY");
 
     const doc = existing as any;
     await ctx.db.patch(userId as any, {
-      nickname:  args.nickname,
-      avatar:    args.avatar,
-      color:     args.color,
-      playStyle: args.playStyle,
-      elo:       doc.elo     ?? 1000,
-      wins:      doc.wins    ?? 0,
-      losses:    doc.losses  ?? 0,
-      winRate:   doc.winRate ?? 0,
-      badge:     doc.badge   ?? "🆕 Newcomer",
+      nickname:     args.nickname,
+      avatar:       args.avatar,
+      color:        args.color,
+      playStyle:    args.playStyle,
+      points:       doc.points      ?? 0,    // new users start at 0
+      previousRank: doc.previousRank ?? undefined,
+      wins:         doc.wins         ?? 0,
+      losses:       doc.losses       ?? 0,
+      winRate:      doc.winRate      ?? 0,
     });
     return userId;
   },
 });
 
-/**
- * Get any user by ID — used by the profile page for viewing others' profiles.
- */
 export const getById = query({
   args: { userId: v.id("users") },
   handler: async (ctx, { userId }) => {
@@ -173,9 +136,6 @@ export const getById = query({
   },
 });
 
-/**
- * Get all completed sessions a user participated in, most recent first.
- */
 export const sessionsForUser = query({
   args: { userId: v.id("users") },
   handler: async (ctx, { userId }) => {
@@ -190,9 +150,6 @@ export const sessionsForUser = query({
   },
 });
 
-/**
- * Update the current user's profile (nickname, avatar, color, playStyle).
- */
 export const updateProfile = mutation({
   args: {
     nickname:  v.string(),
@@ -206,28 +163,91 @@ export const updateProfile = mutation({
     await ctx.db.patch(userId as any, args);
   },
 });
- /* Called at the end of a session when results are recorded.
+
+/**
+ * Called at the end of a session when results are recorded.
+ *
+ * - Adds/subtracts pointsChange from the player's points total
+ * - Recalculates winRate as (wins / total games) * 100
+ * - Snapshots the player's current leaderboard rank into previousRank
+ *   so the next render can show how many positions they moved
  *
  * Usage:
- *   const recordResult = useMutation(api.users.recordResult);
- *   await recordResult({ userId, won: true });
+ *   await recordResult({ userId, won: true, pointsChange: 10 });
+ *   await recordResult({ userId, won: false, pointsChange: -5 });
  */
 export const recordResult = mutation({
   args: {
-    userId: v.id("users"),
-    won:    v.boolean(),
-    eloChange: v.number(),   // positive = gained, negative = lost
+    userId:       v.id("users"),
+    won:          v.boolean(),
+    pointsChange: v.number(),   // positive = gained, negative = lost
   },
-  handler: async (ctx, { userId, won, eloChange }) => {
+  handler: async (ctx, { userId, won, pointsChange }) => {
     const user = await ctx.db.get(userId);
     if (!user) throw new Error("User not found");
 
-    const wins    = (user.wins   ?? 0) + (won ? 1 : 0);
-    const losses  = (user.losses ?? 0) + (won ? 0 : 1);
+    const u = user as any;
+
+    // ── 1. Snapshot current rank before changing points ──────────────────────
+    // Fetch all ranked users sorted by points to find this user's current rank
+    const allUsers = await ctx.db
+      .query("users")
+      .withIndex("by_points")
+      .order("desc")
+      .collect();
+
+    const rankedUsers = allUsers.filter((x: any) => x.nickname);
+    const currentRankIndex = rankedUsers.findIndex((x: any) => x._id === userId);
+    const currentRank = currentRankIndex >= 0 ? currentRankIndex + 1 : null;
+
+    // ── 2. Compute updated stats ──────────────────────────────────────────────
+    const wins    = (u.wins   ?? 0) + (won ? 1 : 0);
+    const losses  = (u.losses ?? 0) + (won ? 0 : 1);
     const total   = wins + losses;
     const winRate = total > 0 ? Math.round((wins / total) * 100) : 0;
-    const elo     = Math.max(0, (user.elo ?? 1000) + eloChange);
+    const points  = (u.points ?? 0) + pointsChange;
 
-    await ctx.db.patch(userId, { wins, losses, winRate, elo });
+    // ── 3. Persist ────────────────────────────────────────────────────────────
+    await ctx.db.patch(userId, {
+      wins,
+      losses,
+      winRate,
+      points,
+      previousRank: currentRank ?? undefined,
+    });
+  },
+});
+
+/**
+ * Admin-only: reset all players' points, wins, losses back to zero.
+ */
+export const resetLeaderboard = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Must be signed in.");
+
+    const adminEmails = (process.env.ADMIN_EMAILS ?? "").split(",").map((e) => e.trim());
+    const account = await ctx.db
+      .query("authAccounts")
+      .filter((q) => q.eq(q.field("userId"), userId))
+      .first();
+
+    if (!adminEmails.includes(account?.providerAccountId ?? "")) {
+      throw new Error("Admins only.");
+    }
+
+    const allUsers = await ctx.db.query("users").collect();
+    await Promise.all(
+      allUsers.map((u) =>
+        ctx.db.patch(u._id, {
+          points:       0,
+          previousRank: undefined,
+          wins:         0,
+          losses:       0,
+          winRate:      0,
+        })
+      )
+    );
   },
 });
